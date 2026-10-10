@@ -67,20 +67,8 @@ NAME_PATTERN = re.compile(os.getenv("SH_DOMAIN_PATTERN",
 
 DEFAULT_STEMS = ("streamingcommunity", "streamingcommunityz", "streamingunity")
 
-# TLDs the source has used, plus cheap/new gTLDs of the kind it tends to pick.
-# Order does not matter: they are resolved concurrently.
-TLDS = (
-    "rip", "lu", "to", "tv", "xyz", "one", "video", "art", "cz", "icu", "agency",
-    "bike", "boston", "cafe", "codes", "credit", "fans", "family", "forum", "golf",
-    "help", "host", "ink", "life", "live", "lol", "men", "monster", "moe", "ooo",
-    "photos", "run", "space", "spa", "studio", "tech", "tips", "top", "uno", "vip",
-    "website", "wiki", "zip", "bet", "blue", "black", "club", "computer", "paris",
-    "prof", "garden", "ws", "cx", "bz", "co", "cc", "is", "io", "me", "lat", "pro",
-    "day", "buzz", "rodeo", "esq", "network", "city", "click", "digital", "media",
-    "site", "online", "store", "fun", "world", "best", "ninja", "party", "watch",
-    "stream", "movie", "film", "app", "dev", "ac", "gg", "li", "nu", "su", "eu",
-    "it", "im", "la", "st", "sx", "pw", "mov", "foo", "lgbt", "giving", "page",
-)
+# Top TLDs the source has historically used or rotated through.
+TLDS = ("rip", "lu", "to", "tv", "xyz", "one", "video", "site", "live", "click", "fun", "paris", "prof")
 
 LINK_PAGES = tuple(filter(None, os.getenv(
     "SH_DOMAIN_LINK_PAGES",
@@ -344,12 +332,11 @@ def witness_tld_sweep(_session: requests.Session) -> dict[str, set[str]]:
     return found
 
 
-WITNESSES = (
+FAST_WITNESSES = (
+    ("link_pages", witness_link_pages),
     ("redirect", witness_canonical_and_redirect),
     ("telegram", witness_telegram),
-    ("link_pages", witness_link_pages),
     ("wikidata", witness_wikidata),
-    ("tld_sweep", witness_tld_sweep),
 )
 
 
@@ -365,9 +352,9 @@ def discover(*, include_sweep: bool = True, progress=None) -> dict:
         if progress:
             progress({"stage": stage, **extra})
 
-    with ThreadPoolExecutor(max_workers=len(WITNESSES)) as pool:
-        futures = {pool.submit(fn, session): name for name, fn in WITNESSES
-                   if include_sweep or name != "tld_sweep"}
+    # 1. Run fast witnesses concurrently
+    with ThreadPoolExecutor(max_workers=len(FAST_WITNESSES)) as pool:
+        futures = {pool.submit(fn, session): name for name, fn in FAST_WITNESSES}
         for fut in as_completed(futures):
             name = futures[fut]
             try:
@@ -379,6 +366,17 @@ def discover(*, include_sweep: bool = True, progress=None) -> dict:
                 cand = candidates.setdefault(host, Candidate(host))
                 cand.witnesses |= tags
             note("witness", witness=name, found=len(result))
+
+    # 2. If no candidate found from fast sources, fallback to TLD sweep
+    if not candidates and include_sweep:
+        note("witness", witness="tld_sweep", found=0)
+        try:
+            sweep_res = witness_tld_sweep(session)
+            for host, tags in sweep_res.items():
+                cand = candidates.setdefault(host, Candidate(host))
+                cand.witnesses |= tags
+        except Exception as exc:
+            logger.warning("TLD sweep error: %s", exc)
 
     # The current host is always re-checked, so a report can say "still fine".
     cur = current()
