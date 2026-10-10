@@ -1,0 +1,9 @@
+fastapi>=0.115
+uvicorn[standard]>=0.30
+requests>=2.32
+cloudscraper>=1.2.71
+beautifulsoup4>=4.12
+lxml>=5.0
+m3u8>=6.0
+cryptography>=42
+imageio-ffmpeg>=0.5
