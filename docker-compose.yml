@@ -5,9 +5,11 @@ services:
     build: .
     container_name: aurafilm
     ports:
-      - "8080:8080" # Web UI
-      - "7000:7000" # Stremio Addon
+      - "8080:8080"
     volumes:
       - ./data:/app/data
       - ./downloads:/app/downloads
+    environment:
+      - HOST=0.0.0.0
+      - PORT=8080
     restart: unless-stopped

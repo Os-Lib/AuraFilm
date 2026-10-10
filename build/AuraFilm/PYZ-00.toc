@@ -312,6 +312,7 @@
   ('aurafilm.source.tmdb',
    'D:\\MioDownloader\\aurafilm\\source\\tmdb.py',
    'PYMODULE'),
+  ('aurafilm.stremio', 'D:\\MioDownloader\\aurafilm\\stremio.py', 'PYMODULE'),
   ('aurafilm.web', 'D:\\MioDownloader\\aurafilm\\web\\__init__.py', 'PYMODULE'),
   ('aurafilm.web.api', 'D:\\MioDownloader\\aurafilm\\web\\api.py', 'PYMODULE'),
   ('aurafilm.web.server',

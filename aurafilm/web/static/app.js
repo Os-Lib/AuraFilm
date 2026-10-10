@@ -230,10 +230,10 @@ async function openTitleModal(titleId, slug) {
           </div>
           <div style="display:flex; gap:10px; margin-top: 15px;">
             <button class="btn btn-primary btn-lg" onclick="startMovieDownload(${t.id}, '${t.slug}', '${escapeQuotes(t.name)}', '${t.year || ""}')">
-              ⬇️ Download
+              Download
             </button>
             <button class="btn btn-secondary btn-lg" onclick="openVideoPlayer('/api/stream/proxy/${t.id}/${t.slug}', 'hls')">
-              ▶️ Riproduci (Streaming)
+              Riproduci
             </button>
           </div>
         </div>
@@ -291,19 +291,24 @@ async function loadSeasonEpisodes(tvId, slug, seasonNum, tvName, year) {
     container.innerHTML = `
       <div class="season-actions mb-3">
         <button class="btn btn-secondary btn-sm" onclick='downloadWholeSeason(${tvId}, "${slug}", "${tvName}", ${seasonNum}, ${JSON.stringify(eps).replace(/'/g, "&apos;")}, "${year}")'>
-          ⬇️ ${i18n("download_season") || "Download Entire Season"} (${eps.length} eps)
+          ${i18n("download_season") || "Scarica intera stagione"} (${eps.length} ep)
         </button>
       </div>
       <div class="episodes-grid" style="display:flex; flex-direction:column; gap:8px;">
         ${eps.map(ep => `
           <div class="episode-row" style="background:var(--bg-card); padding:10px 14px; border-radius:var(--radius); display:flex; justify-content:space-between; align-items:center;">
             <div>
-              <strong>E${ep.number}</strong> ${ep.name || `Episode ${ep.number}`}
+              <strong>E${ep.number}</strong> ${ep.name || `Episodio ${ep.number}`}
               ${ep.duration ? `<span class="text-muted ml-2">(${ep.duration}m)</span>` : ""}
             </div>
-            <button class="btn btn-primary btn-sm" onclick='startEpisodeDownload(${tvId}, "${slug}", "${tvName}", ${seasonNum}, ${ep.id}, ${ep.number}, "${escapeQuotes(ep.name || "")}", "${year}")'>
-              ⬇️ ${i18n("download_ep") || "Download"}
-            </button>
+            <div style="display:flex; gap:8px;">
+              <button class="btn btn-secondary btn-sm" onclick="openVideoPlayer('/api/stream/proxy/${tvId}/${slug}?episode_id=${ep.id}', 'hls')">
+                Riproduci
+              </button>
+              <button class="btn btn-primary btn-sm" onclick='startEpisodeDownload(${tvId}, "${slug}", "${tvName}", ${seasonNum}, ${ep.id}, ${ep.number}, "${escapeQuotes(ep.name || "")}", "${year}")'>
+                Download
+              </button>
+            </div>
           </div>
         `).join("")}
       </div>
@@ -469,8 +474,11 @@ async function loadFiles() {
               <strong>${f.name}</strong>
               <div class="text-muted" style="font-size:12px;">${f.path}</div>
             </div>
-            <div>
+            <div style="display:flex; align-items:center; gap:10px;">
               <span class="badge">${f.size_mb} MB</span>
+              <button class="btn btn-secondary btn-sm" onclick="openVideoPlayer('/api/files/download/${encodeURIComponent(f.path)}', 'local')">
+                Riproduci
+              </button>
             </div>
           </div>
         `).join("")}
@@ -619,17 +627,39 @@ function openVideoPlayer(url, type) {
   const video = document.getElementById("videoPlayer");
   modal.style.display = "flex";
   
-  if (type === "hls" && Hls.isSupported()) {
-    if (hlsInstance) { hlsInstance.destroy(); }
-    hlsInstance = new Hls();
+  if (hlsInstance) { 
+    hlsInstance.destroy(); 
+    hlsInstance = null; 
+  }
+  
+  if (type === "hls" && typeof Hls !== "undefined" && Hls.isSupported()) {
+    hlsInstance = new Hls({
+      debug: false,
+      enableWorker: true
+    });
     hlsInstance.loadSource(url);
     hlsInstance.attachMedia(video);
     hlsInstance.on(Hls.Events.MANIFEST_PARSED, function() {
-      video.play();
+      video.play().catch(e => console.warn("Autoplay notice:", e));
     });
+    hlsInstance.on(Hls.Events.ERROR, function(event, data) {
+      console.error("Hls event error:", data);
+      if (data.fatal) {
+        if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+          hlsInstance.startLoad();
+        } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
+          hlsInstance.recoverMediaError();
+        } else {
+          hlsInstance.destroy();
+        }
+      }
+    });
+  } else if (type === "hls" && video.canPlayType('application/vnd.apple.mpegurl')) {
+    video.src = url;
+    video.play().catch(e => console.warn("Autoplay notice:", e));
   } else {
     video.src = url;
-    video.play();
+    video.play().catch(e => console.warn("Autoplay notice:", e));
   }
 }
 function closeVideoModal() {

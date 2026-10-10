@@ -60,6 +60,8 @@ def create_app() -> FastAPI:
 
     # API Routes
     app.include_router(api_router)
+    from ..stremio import router as stremio_router
+    app.include_router(stremio_router)
 
     # Static Assets
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")

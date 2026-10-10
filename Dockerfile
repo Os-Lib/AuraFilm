@@ -1,22 +1,21 @@
 FROM python:3.11-slim
 
-# Install system dependencies (FFmpeg for muxing/compression)
-RUN apt-get update && apt-get install -y \
+# Install system dependencies (FFmpeg for video muxing and H.265 compression)
+RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
-    git \
+    ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# Copy requirements and install (we simulate this for now)
-# RUN pip install -r requirements.txt
-# Since we don't have requirements.txt yet, we install what we know
-RUN pip install --no-cache-dir fastapi uvicorn requests cryptography apscheduler
+# Install Python dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
+# Copy application source code
 COPY . .
 
-# Expose Web UI port and Stremio addon port
+# Expose Web Panel port
 EXPOSE 8080
-EXPOSE 7000
 
 CMD ["python", "main.py"]

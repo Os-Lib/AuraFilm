@@ -143,44 +143,40 @@ def home_shelves(host: str) -> list[dict]:
     props = fetch_page(host, f"/{LOCALE}").get("props") or {}
     shelves = []
     
-    # 1. Carica gli slider standard della home
+    seen_ids = set()
+    all_items = []
+    
     for slider in props.get("sliders") or []:
-        items = [t for t in (normalize_title(x) for x in (slider.get("titles") or [])[:SHELF_CAP]) if t]
+        raw_items = slider.get("titles") or []
+        items = [t for t in (normalize_title(x) for x in raw_items[:SHELF_CAP]) if t]
         if items:
-            shelves.append({"key": slider.get("name") or slider.get("label"),
-                            "label": slider.get("label"), "items": items})
-                            
-    # 2. Carica Categorie (Generi) Extra per arricchire la Home
-    extra_genres = [
-        ("action", "Azione 💥"),
-        ("comedy", "Commedia 😂"),
-        ("romance", "Romantico ❤️"),
-        ("horror", "Horror 👻"),
-        ("science-fiction", "Fantascienza 🛸")
-    ]
-    
-    import concurrent.futures
-    
-    def fetch_genre(genre_slug, label):
-        try:
-            g_props = fetch_page(host, f"/{LOCALE}/browse/genre/{genre_slug}").get("props") or {}
-            # La pagina genere restituisce i titoli in props.titles.data
-            data_list = g_props.get("titles", {}).get("data", [])
-            items = [t for t in (normalize_title(x) for x in data_list[:SHELF_CAP]) if t]
-            if items:
-                return {"key": genre_slug, "label": label, "items": items}
-        except Exception as e:
-            logger.debug("Fallito caricamento genere %s: %s", genre_slug, e)
-        return None
+            shelves.append({
+                "key": slider.get("name") or slider.get("label"),
+                "label": slider.get("label"),
+                "items": items
+            })
+            for it in items:
+                if it["id"] not in seen_ids:
+                    seen_ids.add(it["id"])
+                    all_items.append(it)
 
-    # Fetching parallelo per non bloccare la pagina troppo a lungo
-    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
-        futures = [executor.submit(fetch_genre, g[0], g[1]) for g in extra_genres]
-        for future in concurrent.futures.as_completed(futures):
-            res = future.result()
-            if res:
-                shelves.append(res)
-                
+    # Categorie dedicate senza emoji
+    movies = [it for it in all_items if it.get("type") == "movie"]
+    if movies:
+        shelves.append({
+            "key": "movies-curated",
+            "label": "Film in evidenza",
+            "items": movies[:SHELF_CAP]
+        })
+
+    series = [it for it in all_items if it.get("type") == "tv"]
+    if series:
+        shelves.append({
+            "key": "series-curated",
+            "label": "Serie TV in evidenza",
+            "items": series[:SHELF_CAP]
+        })
+
     return shelves
 
 
