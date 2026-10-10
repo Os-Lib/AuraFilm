@@ -44,7 +44,10 @@ DEFAULTS: dict = {
     "audio_languages": ["ita"],
     "subtitle_languages": [],
     "output_format": "mkv",        # "mkv" | "mp4"
-    "subtitle_mode": "embed",      # "embed" | "external"
+    "subtitle_mode": "embed",      # "embed" | "external" | "burn"
+    "tmdb_api_key": "",
+    "night_compression_h265": False,
+    "telegram_bot_token": "",
 }
 
 _lock = threading.RLock()

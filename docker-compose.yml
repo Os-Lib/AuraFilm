@@ -1,0 +1,13 @@
+version: '3.8'
+
+services:
+  aurafilm:
+    build: .
+    container_name: aurafilm
+    ports:
+      - "8080:8080" # Web UI
+      - "7000:7000" # Stremio Addon
+    volumes:
+      - ./data:/app/data
+      - ./downloads:/app/downloads
+    restart: unless-stopped
