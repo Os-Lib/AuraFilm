@@ -15,7 +15,7 @@ import requests
 
 from . import config, events, net
 from .hls import decrypt, downloader, mux, playlist
-from .source import domain, site, stream
+from .source import domain, site, stream, tmdb
 
 logger = logging.getLogger(__name__)
 
@@ -309,6 +309,7 @@ class JobManager:
 
             # 7. Subtitles
             sub_files: List[Dict[str, str]] = []
+            found_langs = set()
             sub_renditions = playlist.pick_subtitles(master, job.subtitle_languages)
             if sub_renditions:
                 job.phase = "subtitles"
@@ -322,8 +323,21 @@ class JobManager:
                                 s_vtt = tmp_base / f"sub_{idx}.vtt"
                                 s_vtt.write_bytes(resp.content)
                                 sub_files.append({"path": str(s_vtt), "language": s_rend.language})
+                                found_langs.add(s_rend.language[:2].lower())
                     except Exception as exc:
                         logger.warning("Subtitle %s failed: %s", s_rend.language, exc)
+
+            # 7.5 AI Subtitle Generation (Whisper) Fallback
+            if audio_files:
+                base_audio = Path(audio_files[0]["path"])
+                for idx, req_lang in enumerate(job.subtitle_languages):
+                    # Check if the requested language (e.g. 'ita') was not found in the official stream
+                    if req_lang[:2].lower() not in found_langs:
+                        logger.info("Subtitle %s missing, triggering Whisper AI generation...", req_lang)
+                        ai_vtt = tmp_base / f"ai_sub_{idx}.vtt"
+                        from aurafilm import whisper_ai
+                        if whisper_ai.generate_subtitles(base_audio, ai_vtt, req_lang):
+                            sub_files.append({"path": str(ai_vtt), "language": f"{req_lang} (AI generated)"})
 
             # 8. Mux with FFmpeg
             job.phase = "muxing"
@@ -342,6 +356,26 @@ class JobManager:
                 container=container,
                 subtitle_mode=sub_mode,
             )
+
+            # 9. TMDB Metadata Integration
+            api_key = cfg.get("tmdb_api_key", "")
+            if api_key:
+                job.phase = "metadata"
+                events.publish({"type": "job_updated", "job": job.as_dict()})
+                try:
+                    is_tv = job.item_type == "episode"
+                    search_q = f"{job.title_name} {job.year}" if job.year else job.title_name
+                    found = tmdb.search_media(search_q, api_key, is_tv=is_tv)
+                    if found:
+                        details = tmdb.get_details(found.get("id"), api_key, is_tv=is_tv)
+                        if details:
+                            nfo_path = subfolder / f"{file_stem}.nfo"
+                            poster_path = subfolder / "poster.jpg"
+                            tmdb.generate_nfo(details, nfo_path, is_tv=is_tv)
+                            if not poster_path.exists():
+                                tmdb.download_poster(details, poster_path)
+                except Exception as exc:
+                    logger.warning("Failed to fetch TMDB metadata: %s", exc)
 
             job.status = "completed"
             job.phase = "finished"

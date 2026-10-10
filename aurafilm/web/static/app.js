@@ -1,4 +1,4 @@
-// StreamHarbor Client Application
+// AuraFilm Client Application
 
 let currentLang = "en";
 let i18nStrings = {};

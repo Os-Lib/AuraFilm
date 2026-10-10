@@ -24,7 +24,7 @@ STATIC_DIR = Path(__file__).parent / "static"
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
-    logger.info("Starting StreamHarbor service...")
+    logger.info("Starting AuraFilm service...")
     job_manager.start()
 
     stop_domain_watch = threading.Event()
@@ -36,14 +36,14 @@ async def lifespan(app: FastAPI):
     yield
 
     # Shutdown
-    logger.info("Shutting down StreamHarbor service...")
+    logger.info("Shutting down AuraFilm service...")
     stop_domain_watch.set()
     job_manager.stop()
 
 
 def create_app() -> FastAPI:
     app = FastAPI(
-        title="StreamHarbor",
+        title="AuraFilm",
         description="Self-hosted web panel to search and download films and TV series",
         version="0.1.0",
         lifespan=lifespan,

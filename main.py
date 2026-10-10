@@ -1,9 +1,9 @@
-"""StreamHarbor entrypoint."""
+"""AuraFilm entrypoint."""
 
 import logging
 import uvicorn
-from streamharbor import config
-from streamharbor.web.server import create_app
+from aurafilm import config
+from aurafilm.web.server import create_app
 
 logging.basicConfig(
     level=logging.INFO,
@@ -11,11 +11,21 @@ logging.basicConfig(
     datefmt="%H:%M:%S",
 )
 
+from aurafilm.scheduler import scheduler
+
 app = create_app()
+
+@app.on_event("startup")
+def startup_event():
+    scheduler.start()
+
+@app.on_event("shutdown")
+def shutdown_event():
+    scheduler.stop()
 
 if __name__ == "__main__":
     print(f"\n=======================================================")
-    print(f"  StreamHarbor v0.1.0")
+    print(f"  AuraFilm v0.1.0")
     print(f"  Web Panel: http://{config.HOST}:{config.PORT}")
     print(f"=======================================================\n")
     uvicorn.run("main:app", host=config.HOST, port=config.PORT, reload=False)

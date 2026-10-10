@@ -1,4 +1,4 @@
-# StreamHarbor ⚓
+# AuraFilm ⚓
 
 A modern, lightweight self-hosted web panel to search and download movies and TV series into your media library.
 
@@ -39,8 +39,8 @@ Double-click `start.bat` or run:
 
 ```bat
 # Clone the repository
-git clone https://github.com/yourusername/StreamHarbor.git
-cd StreamHarbor
+git clone https://github.com/yourusername/AuraFilm.git
+cd AuraFilm
 
 # Run setup and start
 start.bat
@@ -50,8 +50,8 @@ start.bat
 
 ```bash
 # 1. Clone repository
-git clone https://github.com/yourusername/StreamHarbor.git
-cd StreamHarbor
+git clone https://github.com/yourusername/AuraFilm.git
+cd AuraFilm
 
 # 2. Create virtual environment
 python -m venv .venv
@@ -70,7 +70,7 @@ The web dashboard will be available at **`http://localhost:8080`**.
 
 ## How Smart Domain Discovery Works
 
-Streaming services rotate domains regularly. StreamHarbor implements a robust multi-witness verification engine:
+Streaming services rotate domains regularly. AuraFilm implements a robust multi-witness verification engine:
 
 ```
 [ Domain Signals ]

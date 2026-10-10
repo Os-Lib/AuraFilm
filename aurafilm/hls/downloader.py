@@ -132,7 +132,7 @@ def download_media(
             try:
                 fut.result()
             except Exception as e:
-                logger.warning("Segment worker exception: %e", e)
+                logger.warning("Segment worker exception: %s", e)
 
     if cancel_event and cancel_event.is_set():
         raise DownloadCancelled("Download cancelled by user")

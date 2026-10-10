@@ -242,6 +242,11 @@ body.dark-theme {
   padding-bottom: 12px;
 }
 
+.shelf-slider .media-card {
+  flex: 0 0 160px;
+  width: 160px;
+}
+
 .cards-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
