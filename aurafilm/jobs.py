@@ -377,6 +377,21 @@ class JobManager:
                 except Exception as exc:
                     logger.warning("Failed to fetch TMDB metadata: %s", exc)
 
+            # --- INTEGRAZIONE RCLONE CLOUD UPLOAD ---
+            if cfg.get("rclone_enabled") and cfg.get("rclone_remote"):
+                job.phase = "Cloud Upload"
+                self._save_jobs()
+                events.publish({"type": "job_updated", "job": job.as_dict()})
+                
+                try:
+                    remote = cfg.get("rclone_remote")
+                    logger.info("Avvio caricamento Cloud tramite rclone verso %s...", remote)
+                    import subprocess
+                    subprocess.run(["rclone", "copy", str(result_path), remote], check=True)
+                    logger.info("Upload Cloud Rclone completato!")
+                except Exception as e:
+                    logger.error("Errore Rclone upload: %s", e)
+
             job.status = "completed"
             job.phase = "finished"
             job.percent = 100.0

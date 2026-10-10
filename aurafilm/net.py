@@ -49,27 +49,44 @@ def retriable(status: int) -> bool:
     return status in (408, 425, 429) or status >= 500
 
 
+# Lista di Proxy per la rotazione (in un ambiente di produzione qui andrebbero proxy funzionanti)
+PROXY_LIST = [
+    # "http://proxy1:port", "http://proxy2:port"
+]
+
 def get_with_retry(session: requests.Session, url: str, *, attempts: int = 4,
                    what: str = "request", **kwargs) -> requests.Response:
-    """GET with exponential backoff on timeouts, dropped connections and 5xx.
-
-    The first non-retriable response is returned as-is (``.ok`` or not): what a
-    status means is the caller's decision. The last attempt's exception is
-    re-raised unchanged so the log names the real cause.
-    """
+    """GET with exponential backoff on timeouts, dropped connections, 5xx, and Auto-Proxy on 403/429."""
     kwargs.setdefault("timeout", TIMEOUT)
+    use_proxy = False
+    
     for attempt in range(attempts):
         last = attempt == attempts - 1
         try:
+            # Inject proxy if activated by a previous 403/429
+            if use_proxy and PROXY_LIST:
+                p = random.choice(PROXY_LIST)
+                kwargs["proxies"] = {"http": p, "https": p}
+                logger.info("Auto-Proxy Rotation active for %s: %s", what, p)
+                
             response = session.get(url, **kwargs)
         except (requests.Timeout, requests.ConnectionError) as exc:
             if last:
                 raise
             reason = type(exc).__name__
         else:
-            if not retriable(response.status_code) or last:
+            # Rilevamento Blocco IP di StreamingCommunity
+            if response.status_code in (403, 429):
+                logger.warning("Rilevato blocco IP (%d) su %s! Attivazione Proxy Rotation (Tentativo %d/%d)", response.status_code, url, attempt + 1, attempts)
+                use_proxy = True
+                reason = f"IP Blocked HTTP {response.status_code}"
+                if last:
+                    return response
+            elif not retriable(response.status_code) or last:
                 return response
-            reason = f"HTTP {response.status_code}"
+            else:
+                reason = f"HTTP {response.status_code}"
+                
         delay = 2 ** attempt * (0.75 + random.random() / 2)
         logger.warning("%s: %s, retrying in %.1fs (%d/%d)", what, reason, delay, attempt + 1, attempts)
         time.sleep(delay)

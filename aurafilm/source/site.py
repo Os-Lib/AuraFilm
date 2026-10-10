@@ -142,11 +142,45 @@ def search(host: str, query: str, *, page: int = 1, media_type: str | None = Non
 def home_shelves(host: str) -> list[dict]:
     props = fetch_page(host, f"/{LOCALE}").get("props") or {}
     shelves = []
+    
+    # 1. Carica gli slider standard della home
     for slider in props.get("sliders") or []:
         items = [t for t in (normalize_title(x) for x in (slider.get("titles") or [])[:SHELF_CAP]) if t]
         if items:
             shelves.append({"key": slider.get("name") or slider.get("label"),
                             "label": slider.get("label"), "items": items})
+                            
+    # 2. Carica Categorie (Generi) Extra per arricchire la Home
+    extra_genres = [
+        ("action", "Azione 💥"),
+        ("comedy", "Commedia 😂"),
+        ("romance", "Romantico ❤️"),
+        ("horror", "Horror 👻"),
+        ("science-fiction", "Fantascienza 🛸")
+    ]
+    
+    import concurrent.futures
+    
+    def fetch_genre(genre_slug, label):
+        try:
+            g_props = fetch_page(host, f"/{LOCALE}/browse/genre/{genre_slug}").get("props") or {}
+            # La pagina genere restituisce i titoli in props.titles.data
+            data_list = g_props.get("titles", {}).get("data", [])
+            items = [t for t in (normalize_title(x) for x in data_list[:SHELF_CAP]) if t]
+            if items:
+                return {"key": genre_slug, "label": label, "items": items}
+        except Exception as e:
+            logger.debug("Fallito caricamento genere %s: %s", genre_slug, e)
+        return None
+
+    # Fetching parallelo per non bloccare la pagina troppo a lungo
+    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+        futures = [executor.submit(fetch_genre, g[0], g[1]) for g in extra_genres]
+        for future in concurrent.futures.as_completed(futures):
+            res = future.result()
+            if res:
+                shelves.append(res)
+                
     return shelves
 
 

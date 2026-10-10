@@ -23,7 +23,7 @@ SETTINGS_FILE = DATA_DIR / "settings.json"
 JOBS_FILE = DATA_DIR / "jobs.json"
 TMP_DIR = Path(os.getenv("SH_TMP_DIR", str(DATA_DIR / "tmp"))).resolve()
 
-HOST = os.getenv("SH_HOST", "127.0.0.1")
+HOST = os.getenv("SH_HOST", "0.0.0.0")
 PORT = int(os.getenv("SH_PORT", "8080"))
 
 DEFAULTS: dict = {
@@ -51,6 +51,9 @@ DEFAULTS: dict = {
     "compression_end_hour": 6,
     "telegram_bot_token": "",
     "telegram_allowed_ids": [],
+    "default_quality": "1080p",
+    "rclone_enabled": False,
+    "rclone_remote": "gdrive:/AuraFilm",
 }
 
 _lock = threading.RLock()

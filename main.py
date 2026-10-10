@@ -30,4 +30,8 @@ if __name__ == "__main__":
     print(f"  AuraFilm v0.1.0")
     print(f"  Web Panel: http://{config.HOST}:{config.PORT}")
     print(f"=======================================================\n")
-    uvicorn.run("main:app", host=config.HOST, port=config.PORT, reload=False)
+    try:
+        uvicorn.run(app, host=config.HOST, port=config.PORT)
+    except Exception as e:
+        print(f"\n[ERRORE FATALE] Il server si è bloccato: {e}")
+        input("Premi INVIO per uscire...")

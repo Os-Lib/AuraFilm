@@ -398,3 +398,23 @@ async def sse_events(request: Request):
             "X-Accel-Buffering": "no",
         },
     )
+
+from fastapi.responses import StreamingResponse
+
+
+@router.get("/api/stream/proxy/{id}/{slug}")
+async def stream_proxy_master(id: int, slug: str):
+    from aurafilm.source import stream, site, domain
+    cur_domain = domain.current()
+    try:
+        ts = site.TitleSession(cur_domain, id, slug)
+        m3u8_url = stream.get_master_m3u8(ts)
+        # Ritorno il m3u8 originale. hls.js potrebbe funzionare se non ci sono blocchi CORS.
+        # In una vera app, dovremmo fare un proxy di ogni chunk, o usare i proxy del player web.
+        # Ritorniamo un redirect diretto all url per semplicità
+        from fastapi.responses import RedirectResponse
+        return RedirectResponse(m3u8_url)
+    except Exception as e:
+        logger.error("Proxy error: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+

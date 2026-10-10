@@ -16,9 +16,18 @@ from ..jobs import job_manager
 from ..source import domain
 from .api import router as api_router
 
+import sys
+
 logger = logging.getLogger(__name__)
 
-STATIC_DIR = Path(__file__).parent / "static"
+if getattr(sys, 'frozen', False):
+    # Eseguibile compilato con PyInstaller
+    base_dir = Path(sys._MEIPASS) / "aurafilm" / "web"
+else:
+    # Esecuzione da sorgente Python
+    base_dir = Path(__file__).parent
+
+STATIC_DIR = base_dir / "static"
 
 
 @asynccontextmanager
@@ -58,6 +67,9 @@ def create_app() -> FastAPI:
     # Single Page App index
     @app.get("/")
     async def serve_index():
-        return FileResponse(STATIC_DIR / "index.html")
+        return FileResponse(
+            STATIC_DIR / "index.html", 
+            headers={"Cache-Control": "no-cache, no-store, must-revalidate"}
+        )
 
     return app

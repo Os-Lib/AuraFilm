@@ -228,9 +228,14 @@ async function openTitleModal(titleId, slug) {
             <label><input type="checkbox" id="chkAudioIta" value="ita" checked> Italiano</label>
             <label class="ml-3"><input type="checkbox" id="chkAudioEng" value="eng"> English</label>
           </div>
-          <button class="btn btn-primary btn-lg mt-3" onclick="startMovieDownload(${t.id}, '${t.slug}', '${escapeQuotes(t.name)}', '${t.year || ""}')">
-            ⬇️ ${i18n("download_movie") || "Download Movie"}
-          </button>
+          <div style="display:flex; gap:10px; margin-top: 15px;">
+            <button class="btn btn-primary btn-lg" onclick="startMovieDownload(${t.id}, '${t.slug}', '${escapeQuotes(t.name)}', '${t.year || ""}')">
+              ⬇️ Download
+            </button>
+            <button class="btn btn-secondary btn-lg" onclick="openVideoPlayer('/api/stream/proxy/${t.id}/${t.slug}', 'hls')">
+              ▶️ Riproduci (Streaming)
+            </button>
+          </div>
         </div>
       `;
     } else {
@@ -486,6 +491,18 @@ async function loadSettings() {
     document.getElementById("settingDownloadDir").value = cfg.download_dir || "";
     document.getElementById("settingFormat").value = cfg.output_format || "mkv";
     document.getElementById("settingWorkers").value = cfg.max_segment_workers || 12;
+
+    if (document.getElementById("settingDefaultQuality")) {
+      document.getElementById("settingDefaultQuality").value = cfg.default_quality || "1080p";
+    }
+
+    // Advanced Settings
+    if (document.getElementById("settingTelegramToken")) {
+      document.getElementById("settingTelegramToken").value = cfg.telegram_bot_token || "";
+      document.getElementById("settingNightCompression").checked = !!cfg.night_compression_h265;
+      document.getElementById("settingCompStart").value = cfg.compression_start_hour || 2;
+      document.getElementById("settingCompEnd").value = cfg.compression_end_hour || 6; if(document.getElementById("settingRcloneEnabled")) { document.getElementById("settingRcloneEnabled").checked = !!cfg.rclone_enabled; document.getElementById("settingRcloneRemote").value = cfg.rclone_remote || "gdrive:/AuraFilm"; }
+    }
   } catch (err) {
     console.error("Settings load failed", err);
   }
@@ -531,6 +548,16 @@ async function saveGeneralSettings() {
     output_format: document.getElementById("settingFormat").value,
     max_segment_workers: parseInt(document.getElementById("settingWorkers").value, 10) || 12,
   };
+
+  // Advanced settings if present
+  const tgToken = document.getElementById("settingTelegramToken");
+  if (tgToken) {
+    payload.telegram_bot_token = tgToken.value.trim();
+    payload.night_compression_h265 = document.getElementById("settingNightCompression").checked;
+    payload.compression_start_hour = parseInt(document.getElementById("settingCompStart").value, 10) || 2;
+    payload.compression_end_hour = parseInt(document.getElementById("settingCompEnd").value, 10) || 6; if(document.getElementById("settingRcloneEnabled")) { payload.rclone_enabled = document.getElementById("settingRcloneEnabled").checked; payload.rclone_remote = document.getElementById("settingRcloneRemote").value.trim(); }
+  }
+
   await fetch("/api/settings", {
     method: "POST",
     headers: {"Content-Type": "application/json"},
@@ -585,3 +612,32 @@ async function finishWizard() {
   document.getElementById("wizardModal").style.display = "none";
   loadHome();
 }
+
+let hlsInstance = null;
+function openVideoPlayer(url, type) {
+  const modal = document.getElementById("videoModal");
+  const video = document.getElementById("videoPlayer");
+  modal.style.display = "flex";
+  
+  if (type === "hls" && Hls.isSupported()) {
+    if (hlsInstance) { hlsInstance.destroy(); }
+    hlsInstance = new Hls();
+    hlsInstance.loadSource(url);
+    hlsInstance.attachMedia(video);
+    hlsInstance.on(Hls.Events.MANIFEST_PARSED, function() {
+      video.play();
+    });
+  } else {
+    video.src = url;
+    video.play();
+  }
+}
+function closeVideoModal() {
+  const modal = document.getElementById("videoModal");
+  const video = document.getElementById("videoPlayer");
+  modal.style.display = "none";
+  video.pause();
+  video.src = "";
+  if (hlsInstance) { hlsInstance.destroy(); hlsInstance = null; }
+}
+
