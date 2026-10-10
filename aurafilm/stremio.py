@@ -21,6 +21,13 @@ def get_manifest():
         "catalogs": []
     }
 
+@addon_app.get("/stream/{type}/{id}.json")
+def get_stream(type: str, id: str):
+    # Example id from stremio: tt1234567 (IMDb ID).
+    # We would need to search our library or StreamingCommunity for this ID
+    # For now, we return an empty stream to avoid crashes, laying the groundwork
+    return {"streams": []}
+
 def run_stremio_server():
     logger.info("Starting Stremio addon server on port 7000...")
     # uvicorn.run(addon_app, host="0.0.0.0", port=7000, log_level="warning")

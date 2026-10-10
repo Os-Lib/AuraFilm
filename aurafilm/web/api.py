@@ -162,6 +162,25 @@ async def search_titles(q: str = Query(..., min_length=1), page: int = 1, type: 
         domain.on_source_failure()
         raise HTTPException(status_code=502, detail=str(exc))
 
+@router.get("/api/search/actor")
+async def search_actor_movies(q: str = Query(..., min_length=2)):
+    # Feature Idea #2: Actor/Director Deep Search via TMDB
+    api_key = config.get().get("tmdb_api_key")
+    if not api_key:
+        raise HTTPException(status_code=400, detail="TMDB API Key missing in settings")
+    try:
+        # Search person
+        resp = requests.get(f"https://api.themoviedb.org/3/search/person", params={"api_key": api_key, "query": q, "language": "it-IT"}).json()
+        if not resp.get("results"):
+            return {"results": []}
+        person_id = resp["results"][0]["id"]
+        # Get credits
+        credits = requests.get(f"https://api.themoviedb.org/3/person/{person_id}/movie_credits", params={"api_key": api_key, "language": "it-IT"}).json()
+        cast_movies = credits.get("cast", [])
+        return {"person": resp["results"][0]["name"], "results": sorted(cast_movies, key=lambda x: x.get("popularity", 0), reverse=True)[:20]}
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+
 
 @router.get("/api/title/{title_id}/{slug}")
 async def get_title_details(title_id: int, slug: str):
@@ -321,6 +340,22 @@ async def list_files():
                 "type": p.suffix[1:].lower(),
             })
     return {"files": results, "total_size_mb": round(total_bytes / (1024 * 1024), 1)}
+
+@router.get("/api/files/download/{filename:path}")
+async def download_file(filename: str):
+    import os
+    from fastapi.responses import FileResponse
+    dl_dir = Path(config.value("download_dir"))
+    file_path = (dl_dir / filename).resolve()
+    
+    # Security check: ensure path is within dl_dir
+    if not str(file_path).startswith(str(dl_dir)):
+        raise HTTPException(status_code=403, detail="Forbidden")
+        
+    if not file_path.exists() or not file_path.is_file():
+        raise HTTPException(status_code=404, detail="File not found")
+        
+    return FileResponse(path=file_path, filename=file_path.name)
 
 
 @router.get("/api/settings")

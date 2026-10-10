@@ -12,12 +12,14 @@ logging.basicConfig(
 )
 
 from aurafilm.scheduler import scheduler
+from aurafilm.bot import start_bot
 
 app = create_app()
 
 @app.on_event("startup")
 def startup_event():
     scheduler.start()
+    start_bot()
 
 @app.on_event("shutdown")
 def shutdown_event():

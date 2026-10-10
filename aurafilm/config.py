@@ -47,7 +47,10 @@ DEFAULTS: dict = {
     "subtitle_mode": "embed",      # "embed" | "external" | "burn"
     "tmdb_api_key": "",
     "night_compression_h265": False,
+    "compression_start_hour": 2,
+    "compression_end_hour": 6,
     "telegram_bot_token": "",
+    "telegram_allowed_ids": [],
 }
 
 _lock = threading.RLock()

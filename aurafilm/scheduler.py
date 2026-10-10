@@ -50,3 +50,47 @@ class Scheduler:
             time.sleep(10)
 
 scheduler = Scheduler()
+
+def night_compression_task():
+    from aurafilm import config
+    import subprocess
+    from pathlib import Path
+    import os
+    
+    cfg = config.get()
+    if not cfg.get("night_compression_h265"):
+        return
+        
+    start_hr = cfg.get("compression_start_hour", 2)
+    end_hr = cfg.get("compression_end_hour", 6)
+    
+    current_hour = time.localtime().tm_hour
+    if start_hr <= current_hour < end_hr:
+        dl_dir = Path(cfg.get("download_dir", "downloads"))
+        if not dl_dir.exists():
+            return
+            
+        # Find uncompressed mkv files (we can tag compressed ones by adding .h265 in the name or storing a db of compressed files)
+        # For simplicity, we'll assume any file containing "h265" is already compressed.
+        for file_path in dl_dir.rglob("*.mkv"):
+            if "h265" in file_path.name.lower():
+                continue
+            
+            logger.info("Starting night compression on: %s", file_path.name)
+            out_path = file_path.with_name(f"{file_path.stem}.h265.mkv")
+            
+            cmd = [
+                "ffmpeg", "-y", "-i", str(file_path),
+                "-c:v", "libx265", "-crf", "28", "-preset", "fast",
+                "-c:a", "copy", "-c:s", "copy", str(out_path)
+            ]
+            try:
+                subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                os.remove(file_path)
+                logger.info("Successfully compressed %s", file_path.name)
+            except Exception as e:
+                logger.error("Compression failed for %s: %s", file_path.name, e)
+                if out_path.exists():
+                    os.remove(out_path)
+
+scheduler.add_task("Nightly Compression", interval_seconds=3600, func=night_compression_task)
