@@ -136,11 +136,15 @@ function navigate(tab) {
   if (tab === "home") loadHome();
   if (tab === "downloads") loadDownloads();
   if (tab === "files") loadFiles();
+  if (tab === "watchlist") loadWatchlist();
+  if (tab === "calendar") loadCalendar();
+  if (tab === "stats") loadStats();
   if (tab === "settings") loadSettings();
 }
 
 // Home Shelves
 async function loadHome() {
+  loadContinueWatching();
   const container = document.getElementById("homeShelves");
   container.innerHTML = '<div class="loader-box">Loading shelves...</div>';
   try {
@@ -162,6 +166,7 @@ async function loadHome() {
       `;
       container.appendChild(shelfEl);
     });
+    initGenres();
   } catch (err) {
     container.innerHTML = `<div class="empty-state">Error loading content: ${err.message}</div>`;
   }
@@ -172,7 +177,7 @@ function renderMediaCard(item) {
   return `
     <div class="media-card" onclick="openTitleModal(${item.id}, '${item.slug}')">
       <div class="media-poster-wrap">
-        ${posterUrl ? `<img class="media-poster" src="${posterUrl}" loading="lazy" alt="${item.name}">` : '<div class="no-poster">🎬</div>'}
+        ${posterUrl ? `<img class="media-poster" src="${posterUrl}" loading="lazy" alt="${item.name}">` : '<div class="no-poster">N/D</div>'}
         ${item.score ? `<span class="media-badge">★ ${item.score}</span>` : ""}
       </div>
       <div class="media-info">
@@ -252,6 +257,15 @@ async function openTitleModal(titleId, slug) {
       `;
     }
 
+    activeModalItem = {
+      id: t.id,
+      name: t.name,
+      slug: t.slug,
+      poster: t.poster || "",
+      type: t.type || "movie",
+      year: t.year || ""
+    };
+
     content.innerHTML = `
       ${bannerUrl ? `<div class="detail-banner" style="background-image: url('${bannerUrl}')"></div>` : ""}
       <div class="detail-body">
@@ -259,7 +273,10 @@ async function openTitleModal(titleId, slug) {
           ${posterUrl ? `<img class="detail-poster" src="${posterUrl}">` : ""}
         </div>
         <div class="detail-content-col">
-          <h2 class="detail-title">${t.name}</h2>
+          <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+            <h2 class="detail-title">${t.name}</h2>
+            <button class="btn btn-secondary btn-sm" onclick="toggleWatchlistCurrent()" id="btnModalWatchlist">Preferiti</button>
+          </div>
           <div class="detail-meta-row">
             ${t.year ? `<span>${t.year}</span>` : ""}
             ${t.quality ? `<span class="badge">${t.quality}</span>` : ""}
@@ -509,7 +526,21 @@ async function loadSettings() {
       document.getElementById("settingTelegramToken").value = cfg.telegram_bot_token || "";
       document.getElementById("settingNightCompression").checked = !!cfg.night_compression_h265;
       document.getElementById("settingCompStart").value = cfg.compression_start_hour || 2;
-      document.getElementById("settingCompEnd").value = cfg.compression_end_hour || 6; if(document.getElementById("settingRcloneEnabled")) { document.getElementById("settingRcloneEnabled").checked = !!cfg.rclone_enabled; document.getElementById("settingRcloneRemote").value = cfg.rclone_remote || "gdrive:/AuraFilm"; }
+      document.getElementById("settingCompEnd").value = cfg.compression_end_hour || 6;
+      if (document.getElementById("settingRcloneEnabled")) {
+        document.getElementById("settingRcloneEnabled").checked = !!cfg.rclone_enabled;
+        document.getElementById("settingRcloneRemote").value = cfg.rclone_remote || "gdrive:/AuraFilm";
+        document.getElementById("settingRcloneDelete").checked = !!cfg.rclone_delete_after_upload;
+      }
+      if (document.getElementById("settingDiscordWebhook")) {
+        document.getElementById("settingDiscordWebhook").value = cfg.discord_webhook_url || "";
+      }
+      if (document.getElementById("settingSpeedLimit")) {
+        document.getElementById("settingSpeedLimit").value = cfg.download_speed_limit_mb || 0;
+      }
+      if (document.getElementById("settingPreferredAudio")) {
+        document.getElementById("settingPreferredAudio").value = cfg.preferred_audio || "ita";
+      }
     }
   } catch (err) {
     console.error("Settings load failed", err);
@@ -557,13 +588,31 @@ async function saveGeneralSettings() {
     max_segment_workers: parseInt(document.getElementById("settingWorkers").value, 10) || 12,
   };
 
+  if (document.getElementById("settingDefaultQuality")) {
+    payload.default_quality = document.getElementById("settingDefaultQuality").value;
+  }
+
   // Advanced settings if present
   const tgToken = document.getElementById("settingTelegramToken");
   if (tgToken) {
     payload.telegram_bot_token = tgToken.value.trim();
     payload.night_compression_h265 = document.getElementById("settingNightCompression").checked;
     payload.compression_start_hour = parseInt(document.getElementById("settingCompStart").value, 10) || 2;
-    payload.compression_end_hour = parseInt(document.getElementById("settingCompEnd").value, 10) || 6; if(document.getElementById("settingRcloneEnabled")) { payload.rclone_enabled = document.getElementById("settingRcloneEnabled").checked; payload.rclone_remote = document.getElementById("settingRcloneRemote").value.trim(); }
+    payload.compression_end_hour = parseInt(document.getElementById("settingCompEnd").value, 10) || 6;
+    if (document.getElementById("settingRcloneEnabled")) {
+      payload.rclone_enabled = document.getElementById("settingRcloneEnabled").checked;
+      payload.rclone_remote = document.getElementById("settingRcloneRemote").value.trim();
+      payload.rclone_delete_after_upload = document.getElementById("settingRcloneDelete").checked;
+    }
+    if (document.getElementById("settingDiscordWebhook")) {
+      payload.discord_webhook_url = document.getElementById("settingDiscordWebhook").value.trim();
+    }
+    if (document.getElementById("settingSpeedLimit")) {
+      payload.download_speed_limit_mb = parseInt(document.getElementById("settingSpeedLimit").value, 10) || 0;
+    }
+    if (document.getElementById("settingPreferredAudio")) {
+      payload.preferred_audio = document.getElementById("settingPreferredAudio").value;
+    }
   }
 
   await fetch("/api/settings", {
@@ -622,9 +671,18 @@ async function finishWizard() {
 }
 
 let hlsInstance = null;
+
+function changeVideoQuality(idx) {
+  if (hlsInstance) {
+    hlsInstance.currentLevel = parseInt(idx, 10);
+  }
+}
+
 function openVideoPlayer(url, type) {
   const modal = document.getElementById("videoModal");
   const video = document.getElementById("videoPlayer");
+  const qualitySelect = document.getElementById("videoQualitySelect");
+  
   modal.style.display = "flex";
   
   if (hlsInstance) { 
@@ -633,15 +691,39 @@ function openVideoPlayer(url, type) {
   }
   
   if (type === "hls" && typeof Hls !== "undefined" && Hls.isSupported()) {
+    qualitySelect.style.display = "inline-block";
+    qualitySelect.innerHTML = '<option value="-1">Qualita: Auto</option>';
+    
     hlsInstance = new Hls({
       debug: false,
       enableWorker: true
     });
     hlsInstance.loadSource(url);
     hlsInstance.attachMedia(video);
-    hlsInstance.on(Hls.Events.MANIFEST_PARSED, function() {
+    
+    hlsInstance.on(Hls.Events.MANIFEST_PARSED, function(event, data) {
+      if (hlsInstance.levels && hlsInstance.levels.length > 0) {
+        qualitySelect.innerHTML = '<option value="-1">Auto</option>';
+        let highestIdx = 0;
+        let maxHeight = 0;
+        hlsInstance.levels.forEach((lvl, idx) => {
+          const label = lvl.height ? `${lvl.height}p` : `${Math.round(lvl.bitrate / 1000)}k`;
+          const opt = document.createElement("option");
+          opt.value = idx;
+          opt.textContent = label;
+          qualitySelect.appendChild(opt);
+          if (lvl.height && lvl.height > maxHeight) {
+            maxHeight = lvl.height;
+            highestIdx = idx;
+          }
+        });
+        // Default impostato alla risoluzione piu alta possibile
+        hlsInstance.currentLevel = highestIdx;
+        qualitySelect.value = highestIdx;
+      }
       video.play().catch(e => console.warn("Autoplay notice:", e));
     });
+    
     hlsInstance.on(Hls.Events.ERROR, function(event, data) {
       console.error("Hls event error:", data);
       if (data.fatal) {
@@ -654,20 +736,239 @@ function openVideoPlayer(url, type) {
         }
       }
     });
-  } else if (type === "hls" && video.canPlayType('application/vnd.apple.mpegurl')) {
-    video.src = url;
-    video.play().catch(e => console.warn("Autoplay notice:", e));
   } else {
+    if (qualitySelect) qualitySelect.style.display = "none";
     video.src = url;
     video.play().catch(e => console.warn("Autoplay notice:", e));
   }
+
+  let lastReportTime = 0;
+  video.ontimeupdate = () => {
+    const now = Date.now();
+    if (activeModalItem && video.duration > 0 && now - lastReportTime > 5000) {
+      lastReportTime = now;
+      fetch("/api/history", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+          ...activeModalItem,
+          current_time: video.currentTime,
+          duration: video.duration
+        })
+      }).catch(() => {});
+    }
+  };
 }
+
 function closeVideoModal() {
   const modal = document.getElementById("videoModal");
   const video = document.getElementById("videoPlayer");
   modal.style.display = "none";
   video.pause();
+  video.ontimeupdate = null;
   video.src = "";
   if (hlsInstance) { hlsInstance.destroy(); hlsInstance = null; }
+  loadContinueWatching();
+}
+
+// ── Genre Explorer ──────────────────────────────────────────────────────────
+
+const ALL_GENRES = [
+  "Azione", "Avventura", "Animazione", "Commedia", "Crime",
+  "Documentario", "Dramma", "Famiglia", "Fantasy", "Fantascienza",
+  "Horror", "Mistero", "Romantico", "Thriller", "Western", "Guerra"
+];
+
+let selectedGenre = null;
+let selectedGenreMediaType = null;
+
+function initGenres() {
+  const container = document.getElementById("genreChipsList");
+  if (!container) return;
+  container.innerHTML = "";
+  ALL_GENRES.forEach(g => {
+    const btn = document.createElement("button");
+    btn.className = `btn btn-sm ${selectedGenre === g ? "btn-primary" : "btn-secondary"}`;
+    btn.textContent = g;
+    btn.onclick = () => selectGenre(g);
+    container.appendChild(btn);
+  });
+}
+
+function setGenreTypeFilter(type, el) {
+  selectedGenreMediaType = type;
+  document.querySelectorAll(".genre-type-filters button").forEach(b => b.classList.remove("active"));
+  if (el) el.classList.add("active");
+  if (selectedGenre) {
+    selectGenre(selectedGenre);
+  }
+}
+
+async function selectGenre(genre) {
+  selectedGenre = genre;
+  initGenres();
+  
+  const container = document.getElementById("genreResultsContainer");
+  const title = document.getElementById("genreResultsTitle");
+  const grid = document.getElementById("genreResultsGrid");
+  if (!container || !title || !grid) return;
+  
+  container.style.display = "block";
+  const typeLabel = selectedGenreMediaType === "movie" ? "Film" : (selectedGenreMediaType === "tv" ? "Serie TV" : "Tutti i titoli");
+  title.textContent = `${genre} (${typeLabel})`;
+  grid.innerHTML = '<div class="loader-box">Caricamento contenuti...</div>';
+  
+  try {
+    let url = `/api/search?q=${encodeURIComponent(genre)}`;
+    if (selectedGenreMediaType) {
+      url += `&type=${selectedGenreMediaType}`;
+    }
+    const res = await fetch(url);
+    const data = await res.json();
+    const results = data.results || [];
+    if (results.length === 0) {
+      grid.innerHTML = '<div class="empty-state">Nessun titolo trovato per questo genere.</div>';
+      return;
+    }
+    grid.innerHTML = results.map(renderMediaCard).join("");
+  } catch (err) {
+    grid.innerHTML = `<div class="empty-state">Errore nel caricamento: ${err.message}</div>`;
+  }
+}
+
+// ── Watchlist / Preferiti ───────────────────────────────────────────────────
+
+let activeModalItem = null;
+
+async function toggleWatchlistCurrent() {
+  if (!activeModalItem) return;
+  try {
+    const res = await fetch("/api/watchlist", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify(activeModalItem)
+    });
+    const data = await res.json();
+    const btn = document.getElementById("btnModalWatchlist");
+    if (btn) {
+      btn.textContent = data.status === "added" ? "Nei Preferiti" : "Preferiti";
+      btn.className = data.status === "added" ? "btn btn-primary btn-sm" : "btn btn-secondary btn-sm";
+    }
+  } catch (err) {
+    alert("Errore salvataggio preferiti: " + err.message);
+  }
+}
+
+async function loadWatchlist() {
+  const grid = document.getElementById("watchlistGrid");
+  if (!grid) return;
+  grid.innerHTML = '<div class="loader-box">Caricamento preferiti...</div>';
+  try {
+    const res = await fetch("/api/watchlist");
+    const data = await res.json();
+    const items = data.watchlist || [];
+    if (items.length === 0) {
+      grid.innerHTML = '<div class="empty-state">Nessun titolo nei preferiti. Aggiungi film o serie dalle loro schede.</div>';
+      return;
+    }
+    grid.innerHTML = items.map(renderMediaCard).join("");
+  } catch (err) {
+    grid.innerHTML = `<div class="empty-state">Errore: ${err.message}</div>`;
+  }
+}
+
+// ── Calendario Uscite ───────────────────────────────────────────────────────
+
+async function loadCalendar() {
+  const grid = document.getElementById("calendarGrid");
+  if (!grid) return;
+  grid.innerHTML = '<div class="loader-box">Caricamento calendario...</div>';
+  try {
+    const res = await fetch("/api/calendar");
+    const data = await res.json();
+    const items = data.releases || [];
+    if (items.length === 0) {
+      grid.innerHTML = '<div class="empty-state">Nessuna nuova uscita recente registrata.</div>';
+      return;
+    }
+    grid.innerHTML = items.map(renderMediaCard).join("");
+  } catch (err) {
+    grid.innerHTML = `<div class="empty-state">Errore: ${err.message}</div>`;
+  }
+}
+
+// ── Statistiche & Archiviazione ─────────────────────────────────────────────
+
+async function loadStats() {
+  const container = document.getElementById("statsContainer");
+  if (!container) return;
+  container.innerHTML = '<div class="loader-box">Calcolo statistiche disco in corso...</div>';
+  try {
+    const res = await fetch("/api/stats");
+    const data = await res.json();
+    const d = data.disk;
+    const l = data.library;
+    
+    container.innerHTML = `
+      <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px;">
+        <div class="settings-card">
+          <h4>Spazio su Disco</h4>
+          <div style="font-size: 24px; font-weight: 700; margin: 12px 0;">${d.free_gb} GB liberi</div>
+          <div class="progress-track" style="height: 10px; margin-bottom: 8px;">
+            <div class="progress-fill" style="width: ${d.used_percent}%;"></div>
+          </div>
+          <div class="text-muted" style="display:flex; justify-content:space-between;">
+            <span>Usati: ${d.used_gb} GB (${d.used_percent}%)</span>
+            <span>Totale: ${d.total_gb} GB</span>
+          </div>
+        </div>
+        
+        <div class="settings-card">
+          <h4>Archivio Locale</h4>
+          <div style="font-size: 24px; font-weight: 700; margin: 12px 0;">${l.total_files} file</div>
+          <div class="text-muted" style="margin-bottom: 6px;">Spazio occupato da download: <strong>${l.total_size_gb} GB</strong></div>
+          <div class="text-muted">Formati presenti: ${Object.entries(l.formats).map(([ext, count]) => `${ext.toUpperCase()} (${count})`).join(", ") || "Nessuno"}</div>
+        </div>
+      </div>
+    `;
+  } catch (err) {
+    container.innerHTML = `<div class="empty-state">Errore: ${err.message}</div>`;
+  }
+}
+
+// ── Continua a Guardare ────────────────────────────────────────────────────
+
+async function loadContinueWatching() {
+  const section = document.getElementById("continueWatchingSection");
+  const slider = document.getElementById("continueWatchingSlider");
+  if (!section || !slider) return;
+  try {
+    const res = await fetch("/api/history");
+    const data = await res.json();
+    const items = data.history || [];
+    if (items.length === 0) {
+      section.style.display = "none";
+      return;
+    }
+    section.style.display = "block";
+    slider.innerHTML = items.map(it => {
+      const posterUrl = it.poster ? `/api/image/${it.poster}` : "";
+      const percent = it.duration ? Math.min(100, Math.round((it.current_time / it.duration) * 100)) : 0;
+      return `
+        <div class="media-card" style="min-width: 140px; cursor:pointer;" onclick="openTitleModal(${it.id}, '${it.slug}')">
+          <div class="media-poster-wrap">
+            ${posterUrl ? `<img class="media-poster" src="${posterUrl}" loading="lazy">` : '<div class="no-poster">N/D</div>'}
+            <div class="progress-track" style="position:absolute; bottom:0; left:0; width:100%; height:4px; border-radius:0;">
+              <div class="progress-fill" style="width:${percent}%;"></div>
+            </div>
+          </div>
+          <div class="media-info">
+            <div class="media-name" title="${it.name}">${it.name}</div>
+            <div class="media-meta">${percent}% completato</div>
+          </div>
+        </div>
+      `;
+    }).join("");
+  } catch (_) {}
 }
 

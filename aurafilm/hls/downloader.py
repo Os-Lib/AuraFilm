@@ -111,6 +111,10 @@ def download_media(
                         data = decryptor.decrypt(data, iv=iv)
                     dest.write_bytes(data)
                     progress.update(1, len(data))
+                    from .. import config
+                    limit_mb = config.value("download_speed_limit_mb")
+                    if limit_mb and limit_mb > 0:
+                        time.sleep(min(1.0, len(data) / (limit_mb * 1024 * 1024)))
                     return
                 if resp.status_code in (408, 425, 429, 500, 502, 503, 504):
                     time.sleep(min(8, 2 ** attempt))

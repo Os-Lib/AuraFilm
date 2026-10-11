@@ -414,3 +414,141 @@ def stream_proxy_master(id: int, slug: str, episode_id: int | None = None):
         logger.error("Proxy error: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
 
+
+# ── Watchlist / Preferiti ──────────────────────────────────────────────────────
+
+WATCHLIST_FILE = Path("data/watchlist.json")
+
+def _load_watchlist() -> list:
+    if not WATCHLIST_FILE.exists():
+        return []
+    try:
+        with open(WATCHLIST_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return []
+
+def _save_watchlist(data: list):
+    WATCHLIST_FILE.parent.mkdir(parents=True, exist_ok=True)
+    with open(WATCHLIST_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+@router.get("/api/watchlist")
+def get_watchlist():
+    return {"watchlist": _load_watchlist()}
+
+@router.post("/api/watchlist")
+def toggle_watchlist(payload: dict):
+    # payload: { "id": int, "name": str, "slug": str, "poster": str, "type": str }
+    items = _load_watchlist()
+    item_id = payload.get("id")
+    exists = any(it.get("id") == item_id for it in items)
+    if exists:
+        items = [it for it in items if it.get("id") != item_id]
+        _save_watchlist(items)
+        return {"status": "removed", "id": item_id}
+    else:
+        items.insert(0, payload)
+        _save_watchlist(items)
+        return {"status": "added", "id": item_id}
+
+
+# ── Cronologia & Continua a Guardare ──────────────────────────────────────────
+
+HISTORY_FILE = Path("data/history.json")
+
+def _load_history() -> list:
+    if not HISTORY_FILE.exists():
+        return []
+    try:
+        with open(HISTORY_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return []
+
+def _save_history(data: list):
+    HISTORY_FILE.parent.mkdir(parents=True, exist_ok=True)
+    with open(HISTORY_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+@router.get("/api/history")
+def get_history():
+    return {"history": _load_history()}
+
+@router.post("/api/history")
+def update_history(payload: dict):
+    # payload: { "id": int, "slug": str, "name": str, "poster": str, "type": str, "episode_id": int | None, "current_time": float, "duration": float }
+    items = _load_history()
+    key = f"{payload.get('id')}_{payload.get('episode_id', '')}"
+    items = [it for it in items if f"{it.get('id')}_{it.get('episode_id', '')}" != key]
+    payload["timestamp"] = time.time()
+    items.insert(0, payload)
+    _save_history(items[:50]) # Conserva gli ultimi 50
+    return {"status": "ok"}
+
+
+# ── Statistiche Disco & Codec ────────────────────────────────────────────────
+
+@router.get("/api/stats")
+def get_system_stats():
+    import shutil
+    dl_dir = Path(config.value("download_dir"))
+    
+    total_b, used_b, free_b = shutil.disk_usage(str(dl_dir.parent if not dl_dir.exists() else dl_dir))
+    
+    total_files = 0
+    total_size = 0
+    formats = {}
+    
+    if dl_dir.exists():
+        for p in dl_dir.rglob("*"):
+            if p.is_file() and p.suffix.lower() in (".mkv", ".mp4", ".vtt"):
+                total_files += 1
+                sz = p.stat().st_size
+                total_size += sz
+                ext = p.suffix[1:].lower()
+                formats[ext] = formats.get(ext, 0) + 1
+                
+    return {
+        "disk": {
+            "total_gb": round(total_b / (1024**3), 1),
+            "used_gb": round(used_b / (1024**3), 1),
+            "free_gb": round(free_b / (1024**3), 1),
+            "used_percent": round((used_b / total_b) * 100, 1)
+        },
+        "library": {
+            "total_files": total_files,
+            "total_size_gb": round(total_size / (1024**3), 2),
+            "formats": formats
+        }
+    }
+
+
+# ── Calendario Uscite ────────────────────────────────────────────────────────
+
+@router.get("/api/calendar")
+def get_calendar():
+    from aurafilm.source import site, domain
+    cur = domain.current()
+    if not cur:
+        return {"releases": []}
+    try:
+        p = site.fetch_page(cur, f"/{site.LOCALE}")
+        sliders = p.get("props", {}).get("sliders", [])
+        recent_series = []
+        for s in sliders:
+            if "recente" in (s.get("label") or "").lower():
+                for t in s.get("titles", []):
+                    if t.get("type") == "tv":
+                        recent_series.append({
+                            "id": t["id"],
+                            "slug": t["slug"],
+                            "name": t["name"],
+                            "year": t.get("last_air_date_it") or t.get("last_air_date") or "",
+                            "poster": site.normalize_title(t).get("poster")
+                        })
+        return {"releases": recent_series[:20]}
+    except Exception as e:
+        logger.warning("Calendar fetch error: %s", e)
+        return {"releases": []}
+

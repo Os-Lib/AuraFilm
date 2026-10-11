@@ -389,8 +389,33 @@ class JobManager:
                     import subprocess
                     subprocess.run(["rclone", "copy", str(result_path), remote], check=True)
                     logger.info("Upload Cloud Rclone completato!")
+                    
+                    if cfg.get("rclone_delete_after_upload"):
+                        try:
+                            if result_path.exists():
+                                result_path.unlink()
+                                logger.info("File locale rimosso post-upload: %s", result_path)
+                        except Exception as del_err:
+                            logger.warning("Impossibile rimuovere il file locale: %s", del_err)
                 except Exception as e:
                     logger.error("Errore Rclone upload: %s", e)
+
+            # Notifica Webhook Discord
+            discord_url = cfg.get("discord_webhook_url")
+            if discord_url:
+                try:
+                    import requests
+                    payload = {
+                        "content": f"AuraFilm: Download completato con successo - {job.title_name}",
+                        "embeds": [{
+                            "title": job.title_name,
+                            "description": f"File salvato: {result_path.name}",
+                            "color": 3066993
+                        }]
+                    }
+                    requests.post(discord_url, json=payload, timeout=5)
+                except Exception as disc_err:
+                    logger.warning("Errore invio notifica Discord: %s", disc_err)
 
             job.status = "completed"
             job.phase = "finished"

@@ -54,6 +54,11 @@ DEFAULTS: dict = {
     "default_quality": "1080p",
     "rclone_enabled": False,
     "rclone_remote": "gdrive:/AuraFilm",
+    "rclone_delete_after_upload": False,
+    "download_speed_limit_mb": 0,
+    "discord_webhook_url": "",
+    "preferred_audio": "ita",
+    "preferred_subs": "none",
 }
 
 _lock = threading.RLock()

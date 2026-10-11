@@ -624,3 +624,8 @@ body.dark-theme {
 .mt-3 { margin-top: 16px; }
 .mt-4 { margin-top: 24px; }
 .text-muted { color: var(--text-muted); font-size: 13px; }
+
+.genre-type-filters .btn.active {
+  background-color: var(--accent);
+  color: #0b0f19;
+}
