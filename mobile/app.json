@@ -10,7 +10,7 @@
       "supportsTablet": true
     },
     "android": {
-      "versionCode": 2,
+      "versionCode": 3,
       "usesCleartextTraffic": true,
       "adaptiveIcon": {
         "backgroundColor": "#0b0f19",
@@ -20,6 +20,17 @@
       },
       "package": "com.oslib.aurafilm"
     },
+    "plugins": [
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "usesCleartextTraffic": true
+          }
+        }
+      ],
+      "./plugins/withNetworkSecurityConfig"
+    ],
     "web": {
       "favicon": "./assets/favicon.png"
     },
