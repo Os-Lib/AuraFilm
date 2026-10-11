@@ -34,6 +34,7 @@ export default function App() {
   const [inputUrl, setInputUrl] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [connStatus, setConnStatus] = useState('checking');
+  const [errorMessage, setErrorMessage] = useState('');
 
   // Navigation Tab: 'home' | 'search' | 'downloads' | 'watchlist' | 'settings'
   const [currentTab, setCurrentTab] = useState('home');
@@ -93,16 +94,26 @@ export default function App() {
 
   const testAndLoad = async (url) => {
     setIsRefreshing(true);
+    setErrorMessage('');
     try {
-      const res = await fetch(`${url}/api/status`, { timeout: 6000 });
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 8000);
+      const res = await fetch(`${url}/api/status`, {
+        method: 'GET',
+        headers: { Accept: 'application/json' },
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
       if (res.ok) {
         setConnStatus('connected');
         loadHomeData(url);
       } else {
         setConnStatus('error');
+        setErrorMessage(`Risposta HTTP ${res.status}`);
       }
     } catch (e) {
       setConnStatus('error');
+      setErrorMessage(e.message || 'Errore di connessione o timeout');
     } finally {
       setIsRefreshing(false);
     }
@@ -119,9 +130,20 @@ export default function App() {
     }
 
     try {
+      const parts = finalUrl.split('://');
+      const proto = parts[0];
+      const hostPart = parts[1];
+      if (hostPart && !hostPart.includes(':') && hostPart.match(/^\d+\.\d+\.\d+\.\d+$/)) {
+        finalUrl = `${proto}://${hostPart}:8080`;
+      }
+    } catch (e) {}
+
+    setInputUrl(finalUrl);
+
+    try {
       await AsyncStorage.setItem('@aurafilm_url', finalUrl);
       setServerUrl(finalUrl);
-      testAndLoad(finalUrl);
+      await testAndLoad(finalUrl);
     } catch (e) {
       console.error(e);
     }
@@ -459,14 +481,41 @@ export default function App() {
             autoCorrect={false}
           />
 
+          <View style={styles.presetsRow}>
+            <TouchableOpacity
+              style={styles.presetChip}
+              onPress={() => setInputUrl('http://192.168.1.45:8080')}
+            >
+              <Text style={styles.presetChipText}>LAN: 192.168.1.45:8080</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.presetChip}
+              onPress={() => setInputUrl('http://100.98.101.41:8080')}
+            >
+              <Text style={styles.presetChipText}>Tailscale: 100.98.101.41:8080</Text>
+            </TouchableOpacity>
+          </View>
+
           {connStatus === 'error' ? (
-            <Text style={styles.errorBanner}>
-              Impossibile raggiungere il server. Verifica che il PC sia acceso e sulla stessa rete Wi-Fi.
-            </Text>
+            <View style={styles.errorBox}>
+              <Text style={styles.errorBanner}>
+                Impossibile raggiungere il server. Verifica che AuraFilm sia avviato sul PC e che il dispositivo sia connesso alla stessa rete Wi-Fi (o Tailscale/VPN).
+              </Text>
+              {errorMessage ? (
+                <Text style={styles.errorDetail}>Dettaglio: {errorMessage}</Text>
+              ) : null}
+            </View>
           ) : null}
 
-          <TouchableOpacity style={styles.primaryBtn} onPress={saveUrl} activeOpacity={0.85}>
-            <Text style={styles.primaryBtnText}>Connetti Server</Text>
+          <TouchableOpacity
+            style={[styles.primaryBtn, isRefreshing && { opacity: 0.6 }]}
+            onPress={saveUrl}
+            disabled={isRefreshing}
+            activeOpacity={0.85}
+          >
+            <Text style={styles.primaryBtnText}>
+              {isRefreshing ? 'Connessione in corso...' : 'Connetti Server'}
+            </Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>
@@ -962,7 +1011,12 @@ const styles = StyleSheet.create({
   textInput: { backgroundColor: '#131b2e', borderWidth: 1, borderColor: '#1e293b', borderRadius: 8, color: '#f8fafc', padding: 14, fontSize: 15, marginBottom: 16 },
   primaryBtn: { backgroundColor: '#00d2ff', padding: 15, borderRadius: 8, alignItems: 'center' },
   primaryBtnText: { color: '#0b0f19', fontSize: 15, fontWeight: '700' },
-  errorBanner: { color: '#f87171', fontSize: 13, textAlign: 'center', marginBottom: 16, lineHeight: 18 },
+  presetsRow: { flexDirection: 'row', gap: 8, marginBottom: 16 },
+  presetChip: { flex: 1, backgroundColor: '#131b2e', borderWidth: 1, borderColor: '#1e293b', borderRadius: 6, paddingVertical: 8, paddingHorizontal: 6, alignItems: 'center' },
+  presetChipText: { color: '#00d2ff', fontSize: 11, fontWeight: '600' },
+  errorBox: { backgroundColor: 'rgba(239, 68, 68, 0.1)', borderWidth: 1, borderColor: '#ef4444', borderRadius: 8, padding: 12, marginBottom: 16 },
+  errorBanner: { color: '#f87171', fontSize: 13, textAlign: 'center', lineHeight: 18 },
+  errorDetail: { color: '#fca5a5', fontSize: 11, textAlign: 'center', marginTop: 4, fontFamily: 'monospace' },
 
   // Top Bar
   topBar: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#1e293b' },
