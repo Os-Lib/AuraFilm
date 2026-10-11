@@ -26,8 +26,9 @@ def shutdown_event():
     scheduler.stop()
 
 if __name__ == "__main__":
+    from aurafilm import __version__
     print(f"\n=======================================================")
-    print(f"  AuraFilm v0.1.0")
+    print(f"  AuraFilm v{__version__}")
     print(f"  Web Panel: http://{config.HOST}:{config.PORT}")
     print(f"=======================================================\n")
     try:

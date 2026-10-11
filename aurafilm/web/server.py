@@ -54,7 +54,7 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="AuraFilm",
         description="Self-hosted web panel to search and download films and TV series",
-        version="0.1.0",
+        version="1.1.1",
         lifespan=lifespan,
     )
 

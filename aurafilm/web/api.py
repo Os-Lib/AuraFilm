@@ -358,6 +358,26 @@ async def download_file(filename: str):
     return FileResponse(path=file_path, filename=file_path.name)
 
 
+@router.delete("/api/files/{filename:path}")
+async def delete_file(filename: str):
+    dl_dir = Path(config.value("download_dir")).resolve()
+    file_path = (dl_dir / filename).resolve()
+
+    if not str(file_path).startswith(str(dl_dir)):
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    if not file_path.exists() or not file_path.is_file():
+        raise HTTPException(status_code=404, detail="File not found")
+
+    try:
+        file_path.unlink()
+        return {"status": "ok", "deleted": filename}
+    except Exception as e:
+        logger.error("Failed to delete file %s: %s", filename, e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+
 @router.get("/api/settings")
 async def get_settings():
     return config.get()
@@ -485,6 +505,15 @@ def update_history(payload: dict):
     items.insert(0, payload)
     _save_history(items[:50]) # Conserva gli ultimi 50
     return {"status": "ok"}
+
+@router.post("/api/history/delete")
+def delete_history_item(payload: dict):
+    # payload: { "id": int, "episode_id": int | None }
+    items = _load_history()
+    key = f"{payload.get('id')}_{payload.get('episode_id', '')}"
+    items = [it for it in items if f"{it.get('id')}_{it.get('episode_id', '')}" != key]
+    _save_history(items)
+    return {"status": "ok", "history": items}
 
 
 # ── Statistiche Disco & Codec ────────────────────────────────────────────────

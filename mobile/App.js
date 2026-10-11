@@ -14,11 +14,14 @@ import {
   Modal,
   useWindowDimensions,
   Platform,
+  RefreshControl,
+  Keyboard,
+  Alert,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { WebView } from 'react-native-webview';
 
-// Error Boundary to prevent any unhandled crash from killing the native app
+// Error Boundary to prevent unhandled UI exceptions from crashing the app
 class ErrorBoundary extends React.Component {
   constructor(props) {
     super(props);
@@ -114,6 +117,10 @@ const TRANSLATIONS = {
     noLocalFiles: 'No downloaded files found.',
     cancel: 'Cancel',
     play: 'Play',
+    clearCompleted: 'Clear Completed',
+    delete: 'Delete',
+    confirmDeleteFile: 'Are you sure you want to delete this file from storage?',
+    confirm: 'Confirm',
 
     // Watchlist
     watchlistHeader: 'Your Watchlist',
@@ -190,6 +197,10 @@ const TRANSLATIONS = {
     noLocalFiles: 'Nessun file scaricato nell archivio.',
     cancel: 'Annulla',
     play: 'Riproduci',
+    clearCompleted: 'Pulisci Completati',
+    delete: 'Elimina',
+    confirmDeleteFile: 'Sei sicuro di voler eliminare questo file dalla memoria?',
+    confirm: 'Conferma',
 
     // Watchlist
     watchlistHeader: 'I tuoi Preferiti',
@@ -273,9 +284,11 @@ function MainApp() {
   const [activeJobs, setActiveJobs] = useState([]);
   const [libraryFiles, setLibraryFiles] = useState([]);
   const [downloadsTab, setDownloadsTab] = useState('jobs'); // 'jobs' | 'files'
+  const [isRefreshingDownloads, setIsRefreshingDownloads] = useState(false);
 
   // Watchlist State
   const [watchlist, setWatchlist] = useState([]);
+  const [isRefreshingWatchlist, setIsRefreshingWatchlist] = useState(false);
 
   // Title Details Modal State
   const [selectedTitle, setSelectedTitle] = useState(null);
@@ -289,6 +302,7 @@ function MainApp() {
   const [playerVisible, setPlayerVisible] = useState(false);
   const [playerUrl, setPlayerUrl] = useState('');
   const [playerTitle, setPlayerTitle] = useState('');
+  const [playingMedia, setPlayingMedia] = useState(null);
 
   useEffect(() => {
     initApp();
@@ -422,9 +436,26 @@ function MainApp() {
     }
   };
 
+  const deleteHistoryItem = async (id, episodeId) => {
+    if (!serverUrl) return;
+    try {
+      const res = await fetch(`${serverUrl}/api/history/delete`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, episode_id: episodeId })
+      });
+      if (res.ok) {
+        setHistory(prev => prev.filter(it => !(it.id === id && (it.episode_id || null) === (episodeId || null))));
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
   // Search - robust extraction of .results
   const handleSearch = async (query = searchQuery, type = searchType) => {
     if (!query.trim() || !serverUrl) return;
+    Keyboard.dismiss();
     setIsSearching(true);
     try {
       let endpoint = `${serverUrl}/api/search?q=${encodeURIComponent(query)}`;
@@ -447,19 +478,20 @@ function MainApp() {
   // Downloads & Files - robust extraction of .jobs and .files
   const loadDownloads = async () => {
     if (!serverUrl) return;
+    setIsRefreshingDownloads(true);
     try {
       const [jobsRes, filesRes] = await Promise.all([
-        fetch(`${serverUrl}/api/jobs`),
-        fetch(`${serverUrl}/api/files`)
+        fetch(`${serverUrl}/api/jobs`).catch(() => ({ ok: false })),
+        fetch(`${serverUrl}/api/files`).catch(() => ({ ok: false }))
       ]);
-      if (jobsRes.ok) {
+      if (jobsRes && jobsRes.ok) {
         const j = await jobsRes.json();
         const list = Array.isArray(j)
           ? j
           : (j && Array.isArray(j.jobs) ? j.jobs : []);
         setActiveJobs(list);
       }
-      if (filesRes.ok) {
+      if (filesRes && filesRes.ok) {
         const f = await filesRes.json();
         const list = Array.isArray(f)
           ? f
@@ -468,6 +500,8 @@ function MainApp() {
       }
     } catch (e) {
       console.error(e);
+    } finally {
+      setIsRefreshingDownloads(false);
     }
   };
 
@@ -480,9 +514,46 @@ function MainApp() {
     }
   };
 
+  const clearCompletedJobs = async () => {
+    if (!serverUrl) return;
+    try {
+      await fetch(`${serverUrl}/api/jobs/clear`, { method: 'POST' });
+      loadDownloads();
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const deleteFile = (filePath) => {
+    Alert.alert(
+      t.confirm,
+      t.confirmDeleteFile,
+      [
+        { text: t.cancel, style: 'cancel' },
+        {
+          text: t.delete,
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const res = await fetch(`${serverUrl}/api/files/${encodeURIComponent(filePath)}`, {
+                method: 'DELETE',
+              });
+              if (res.ok) {
+                loadDownloads();
+              }
+            } catch (e) {
+              console.error(e);
+            }
+          }
+        }
+      ]
+    );
+  };
+
   // Watchlist - robust extraction of .watchlist
   const loadWatchlist = async () => {
     if (!serverUrl) return;
+    setIsRefreshingWatchlist(true);
     try {
       const res = await fetch(`${serverUrl}/api/watchlist`);
       if (res.ok) {
@@ -494,6 +565,8 @@ function MainApp() {
       }
     } catch (e) {
       console.error(e);
+    } finally {
+      setIsRefreshingWatchlist(false);
     }
   };
 
@@ -617,10 +690,35 @@ function MainApp() {
   };
 
   // Streaming Player
-  const playStream = (streamUrl, title) => {
+  const playStream = (streamUrl, title, mediaMeta = null) => {
     setPlayerUrl(streamUrl);
     setPlayerTitle(title);
+    setPlayingMedia(mediaMeta);
     setPlayerVisible(true);
+  };
+
+  const closePlayer = () => {
+    setPlayerVisible(false);
+    setPlayerUrl('');
+    setPlayingMedia(null);
+    loadHomeData();
+  };
+
+  const onPlayerMessage = async (event) => {
+    try {
+      const data = JSON.parse(event.nativeEvent.data);
+      if (data.type === 'progress' && playingMedia && serverUrl) {
+        await fetch(`${serverUrl}/api/history`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            ...playingMedia,
+            current_time: data.currentTime,
+            duration: data.duration,
+          }),
+        }).catch(() => {});
+      }
+    } catch (e) {}
   };
 
   // Grid / Shelf item card dimensions
@@ -657,7 +755,7 @@ function MainApp() {
     );
   };
 
-  // Fullscreen HTML5 / HLS Player template
+  // Fullscreen HTML5 / HLS Player template with quality selector and progress reporting
   const getPlayerHtml = () => `
     <!DOCTYPE html>
     <html>
@@ -665,16 +763,53 @@ function MainApp() {
       <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
       <style>
         * { margin: 0; padding: 0; box-sizing: border-box; background: #000; }
-        body, html { width: 100%; height: 100%; overflow: hidden; display: flex; align-items: center; justify-content: center; }
+        body, html { width: 100%; height: 100%; overflow: hidden; display: flex; align-items: center; justify-content: center; position: relative; }
         video { width: 100%; height: 100%; object-fit: contain; }
+        #qualitySelect {
+          position: absolute;
+          top: 12px;
+          right: 12px;
+          z-index: 1000;
+          background: rgba(11, 15, 25, 0.85);
+          color: #00d2ff;
+          border: 1px solid #1e293b;
+          border-radius: 6px;
+          padding: 6px 10px;
+          font-size: 12px;
+          font-weight: 700;
+          display: none;
+          outline: none;
+        }
       </style>
       <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
     </head>
     <body>
+      <select id="qualitySelect"></select>
       <video id="player" controls autoplay playsinline webkit-playsinline></video>
       <script>
         const video = document.getElementById('player');
+        const qSelect = document.getElementById('qualitySelect');
         const streamUrl = "${playerUrl}";
+        let lastProgressTime = 0;
+
+        function notifyProgress(force) {
+          const now = Date.now();
+          if (!force && now - lastProgressTime < 8000) return;
+          lastProgressTime = now;
+          if (video.duration && !isNaN(video.duration) && video.currentTime) {
+            if (window.ReactNativeWebView) {
+              window.ReactNativeWebView.postMessage(JSON.stringify({
+                type: 'progress',
+                currentTime: Math.floor(video.currentTime),
+                duration: Math.floor(video.duration)
+              }));
+            }
+          }
+        }
+
+        video.addEventListener('timeupdate', function() { notifyProgress(false); });
+        video.addEventListener('pause', function() { notifyProgress(true); });
+        video.addEventListener('ended', function() { notifyProgress(true); });
 
         if (Hls.isSupported() && (streamUrl.includes('.m3u8') || streamUrl.includes('/stream/'))) {
           const hls = new Hls({
@@ -687,6 +822,20 @@ function MainApp() {
           hls.on(Hls.Events.MANIFEST_PARSED, function(event, data) {
             if (data.levels && data.levels.length > 0) {
               hls.currentLevel = data.levels.length - 1;
+
+              qSelect.innerHTML = '<option value="-1">Auto</option>';
+              data.levels.forEach(function(lvl, idx) {
+                const opt = document.createElement('option');
+                opt.value = idx;
+                opt.textContent = lvl.height ? (lvl.height + 'p') : (Math.round(lvl.bitrate / 1000) + 'k');
+                if (idx === data.levels.length - 1) opt.selected = true;
+                qSelect.appendChild(opt);
+              });
+              qSelect.style.display = 'block';
+
+              qSelect.addEventListener('change', function() {
+                hls.currentLevel = parseInt(qSelect.value, 10);
+              });
             }
             video.play().catch(function(e) {});
           });
@@ -796,6 +945,14 @@ function MainApp() {
           <ScrollView
             style={styles.scrollArea}
             showsVerticalScrollIndicator={false}
+            refreshControl={
+              <RefreshControl
+                refreshing={isRefreshing}
+                onRefresh={() => loadHomeData()}
+                tintColor="#00d2ff"
+                colors={['#00d2ff']}
+              />
+            }
           >
             {/* Continue Watching */}
             {Array.isArray(history) && history.length > 0 && (
@@ -814,6 +971,13 @@ function MainApp() {
                       >
                         <View style={[styles.posterWrap, { width: cardWidth, height: cardHeight }]}>
                           {posterUri ? <Image source={{ uri: posterUri }} style={styles.posterImg} /> : null}
+                          <TouchableOpacity
+                            style={styles.historyDeleteBtn}
+                            onPress={() => deleteHistoryItem(item.id, item.episode_id)}
+                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                          >
+                            <Text style={styles.historyDeleteText}>X</Text>
+                          </TouchableOpacity>
                           <View style={styles.historyBarWrap}>
                             <View style={[styles.historyBarFill, { width: `${percent}%` }]} />
                           </View>
@@ -865,15 +1029,28 @@ function MainApp() {
         {currentTab === 'search' && (
           <View style={styles.tabContainer}>
             <View style={styles.searchBarWrap}>
-              <TextInput
-                style={styles.searchInput}
-                placeholder={t.searchPlaceholder}
-                placeholderTextColor="#64748b"
-                value={searchQuery}
-                onChangeText={setSearchQuery}
-                onSubmitEditing={() => handleSearch()}
-                returnKeyType="search"
-              />
+              <View style={styles.searchInputContainer}>
+                <TextInput
+                  style={styles.searchInput}
+                  placeholder={t.searchPlaceholder}
+                  placeholderTextColor="#64748b"
+                  value={searchQuery}
+                  onChangeText={setSearchQuery}
+                  onSubmitEditing={() => handleSearch()}
+                  returnKeyType="search"
+                />
+                {searchQuery.length > 0 ? (
+                  <TouchableOpacity
+                    style={styles.searchClearBtn}
+                    onPress={() => {
+                      setSearchQuery('');
+                      setSearchResults([]);
+                    }}
+                  >
+                    <Text style={styles.searchClearText}>X</Text>
+                  </TouchableOpacity>
+                ) : null}
+              </View>
               <TouchableOpacity style={styles.searchSubmitBtn} onPress={() => handleSearch()}>
                 <Text style={styles.searchSubmitText}>{t.searchBtn}</Text>
               </TouchableOpacity>
@@ -901,6 +1078,28 @@ function MainApp() {
               </TouchableOpacity>
             </View>
 
+            {/* Genre Quick Filters */}
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.searchGenreRow}
+            >
+              {genresList.map(g => (
+                <TouchableOpacity
+                  key={g}
+                  style={[styles.searchGenreChip, searchQuery.toLowerCase() === g.toLowerCase() && styles.searchGenreChipActive]}
+                  onPress={() => {
+                    setSearchQuery(g);
+                    handleSearch(g, searchType);
+                  }}
+                >
+                  <Text style={[styles.searchGenreText, searchQuery.toLowerCase() === g.toLowerCase() && styles.searchGenreTextActive]}>
+                    {g}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+
             {isSearching ? (
               <View style={styles.centerBox}>
                 <ActivityIndicator size="large" color="#00d2ff" />
@@ -908,11 +1107,20 @@ function MainApp() {
               </View>
             ) : (
               <FlatList
+                key={`search_grid_${isTablet ? 5 : 3}`}
                 data={Array.isArray(searchResults) ? searchResults : []}
                 keyExtractor={(item) => (item.id ? item.id.toString() : Math.random().toString())}
                 numColumns={isTablet ? 5 : 3}
                 contentContainerStyle={styles.gridContent}
                 renderItem={({ item }) => renderMediaCard(item)}
+                refreshControl={
+                  <RefreshControl
+                    refreshing={isSearching}
+                    onRefresh={() => handleSearch()}
+                    tintColor="#00d2ff"
+                    colors={['#00d2ff']}
+                  />
+                }
                 ListEmptyComponent={
                   <View style={styles.centerBox}>
                     <Text style={styles.dimmedText}>{t.searchPrompt}</Text>
@@ -946,52 +1154,85 @@ function MainApp() {
             </View>
 
             {downloadsTab === 'jobs' ? (
-              <FlatList
-                data={Array.isArray(activeJobs) ? activeJobs : []}
-                keyExtractor={(item) => item.id || Math.random().toString()}
-                contentContainerStyle={styles.listContent}
-                renderItem={({ item }) => (
-                  <View style={styles.jobItemCard}>
-                    <View style={styles.jobRow}>
-                      <Text style={styles.jobName} numberOfLines={1}>{item.title_name}</Text>
-                      <Text style={styles.jobPercent}>{Math.round(item.percent || 0)}%</Text>
-                    </View>
-                    <View style={styles.progressBar}>
-                      <View style={[styles.progressFill, { width: `${item.percent || 0}%` }]} />
-                    </View>
-                    <View style={styles.jobFooter}>
-                      <Text style={styles.jobPhase}>{item.phase || item.status}</Text>
-                      {item.status === 'downloading' ? (
-                        <TouchableOpacity onPress={() => cancelJob(item.id)}>
-                          <Text style={styles.cancelText}>{t.cancel}</Text>
-                        </TouchableOpacity>
-                      ) : null}
-                    </View>
+              <>
+                {activeJobs.some(j => j.status === 'completed' || j.status === 'cancelled' || j.status === 'failed') ? (
+                  <View style={styles.subActionRow}>
+                    <TouchableOpacity style={styles.subActionBtn} onPress={clearCompletedJobs}>
+                      <Text style={styles.subActionBtnText}>{t.clearCompleted}</Text>
+                    </TouchableOpacity>
                   </View>
-                )}
-                ListEmptyComponent={
-                  <View style={styles.centerBox}>
-                    <Text style={styles.dimmedText}>{t.noActiveDownloads}</Text>
-                  </View>
-                }
-              />
+                ) : null}
+                <FlatList
+                  data={Array.isArray(activeJobs) ? activeJobs : []}
+                  keyExtractor={(item) => item.id || Math.random().toString()}
+                  contentContainerStyle={styles.listContent}
+                  refreshControl={
+                    <RefreshControl
+                      refreshing={isRefreshingDownloads}
+                      onRefresh={() => loadDownloads()}
+                      tintColor="#00d2ff"
+                      colors={['#00d2ff']}
+                    />
+                  }
+                  renderItem={({ item }) => (
+                    <View style={styles.jobItemCard}>
+                      <View style={styles.jobRow}>
+                        <Text style={styles.jobName} numberOfLines={1}>{item.title_name}</Text>
+                        <Text style={styles.jobPercent}>{Math.round(item.percent || 0)}%</Text>
+                      </View>
+                      <View style={styles.progressBar}>
+                        <View style={[styles.progressFill, { width: `${item.percent || 0}%` }]} />
+                      </View>
+                      <View style={styles.jobFooter}>
+                        <Text style={styles.jobPhase}>{item.phase || item.status}</Text>
+                        {item.status === 'downloading' ? (
+                          <TouchableOpacity onPress={() => cancelJob(item.id)}>
+                            <Text style={styles.cancelText}>{t.cancel}</Text>
+                          </TouchableOpacity>
+                        ) : null}
+                      </View>
+                    </View>
+                  )}
+                  ListEmptyComponent={
+                    <View style={styles.centerBox}>
+                      <Text style={styles.dimmedText}>{t.noActiveDownloads}</Text>
+                    </View>
+                  }
+                />
+              </>
             ) : (
               <FlatList
                 data={Array.isArray(libraryFiles) ? libraryFiles : []}
                 keyExtractor={(item) => item.path || Math.random().toString()}
                 contentContainerStyle={styles.listContent}
+                refreshControl={
+                  <RefreshControl
+                    refreshing={isRefreshingDownloads}
+                    onRefresh={() => loadDownloads()}
+                    tintColor="#00d2ff"
+                    colors={['#00d2ff']}
+                  />
+                }
                 renderItem={({ item }) => (
                   <View style={styles.fileItemCard}>
                     <View style={{ flex: 1, marginRight: 10 }}>
                       <Text style={styles.fileName} numberOfLines={1}>{item.name}</Text>
                       <Text style={styles.fileSize}>{item.size_mb} MB</Text>
                     </View>
-                    <TouchableOpacity
-                      style={styles.playFileBtn}
-                      onPress={() => playStream(`${serverUrl}/api/files/download/${encodeURIComponent(item.path)}`, item.name)}
-                    >
-                      <Text style={styles.playFileBtnText}>{t.play}</Text>
-                    </TouchableOpacity>
+                    <View style={{ flexDirection: 'row', gap: 8 }}>
+                      <TouchableOpacity
+                        style={styles.playFileBtn}
+                        onPress={() => playStream(`${serverUrl}/api/files/download/${encodeURIComponent(item.path)}`, item.name, null)}
+                      >
+                        <Text style={styles.playFileBtnText}>{t.play}</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.deleteFileBtn}
+                        onPress={() => deleteFile(item.path)}
+                      >
+                        <Text style={styles.deleteFileBtnText}>{t.delete}</Text>
+                      </TouchableOpacity>
+                    </View>
                   </View>
                 )}
                 ListEmptyComponent={
@@ -1011,11 +1252,20 @@ function MainApp() {
               <Text style={styles.sectionHeader}>{t.watchlistHeader}</Text>
             </View>
             <FlatList
+              key={`watchlist_grid_${isTablet ? 5 : 3}`}
               data={Array.isArray(watchlist) ? watchlist : []}
               keyExtractor={(item) => (item.id ? item.id.toString() : Math.random().toString())}
               numColumns={isTablet ? 5 : 3}
               contentContainerStyle={styles.gridContent}
               renderItem={({ item }) => renderMediaCard(item)}
+              refreshControl={
+                <RefreshControl
+                  refreshing={isRefreshingWatchlist}
+                  onRefresh={() => loadWatchlist()}
+                  tintColor="#00d2ff"
+                  colors={['#00d2ff']}
+                />
+              }
               ListEmptyComponent={
                 <View style={styles.centerBox}>
                   <Text style={styles.dimmedText}>{t.noWatchlist}</Text>
@@ -1118,7 +1368,12 @@ function MainApp() {
       </View>
 
       {/* Title Details Modal */}
-      <Modal visible={!!selectedTitle || detailLoading} animationType="slide" transparent={false}>
+      <Modal
+        visible={(!!selectedTitle || detailLoading) && !playerVisible}
+        animationType="slide"
+        transparent={false}
+        onRequestClose={() => setSelectedTitle(null)}
+      >
         <SafeAreaView style={styles.modalContainer}>
           <StatusBar barStyle="light-content" backgroundColor="#0b0f19" />
           {detailLoading || !selectedTitle ? (
@@ -1186,7 +1441,19 @@ function MainApp() {
                     <View style={styles.actionButtonsRow}>
                       <TouchableOpacity
                         style={styles.primaryActionBtn}
-                        onPress={() => playStream(`${serverUrl}/api/stream/proxy/${selectedTitle.id}/${selectedTitle.slug}`, selectedTitle.name)}
+                        onPress={() => playStream(
+                          `${serverUrl}/api/stream/proxy/${selectedTitle.id}/${selectedTitle.slug}`,
+                          selectedTitle.name,
+                          {
+                            id: selectedTitle.id,
+                            slug: selectedTitle.slug,
+                            name: selectedTitle.name,
+                            type: 'movie',
+                            poster: selectedTitle.poster,
+                            year: selectedTitle.year,
+                            duration: selectedTitle.runtime ? selectedTitle.runtime * 60 : 0,
+                          }
+                        )}
                       >
                         <Text style={styles.primaryActionText}>{t.streamPlay}</Text>
                       </TouchableOpacity>
@@ -1226,7 +1493,22 @@ function MainApp() {
                         <View style={{ flexDirection: 'row', gap: 6 }}>
                           <TouchableOpacity
                             style={styles.epPlayBtn}
-                            onPress={() => playStream(`${serverUrl}/api/stream/proxy/${selectedTitle.id}/${selectedTitle.slug}?episode_id=${ep.id}`, `${selectedTitle.name} S${selectedSeason}E${ep.number}`)}
+                            onPress={() => playStream(
+                              `${serverUrl}/api/stream/proxy/${selectedTitle.id}/${selectedTitle.slug}?episode_id=${ep.id}`,
+                              `${selectedTitle.name} S${selectedSeason}E${ep.number}`,
+                              {
+                                id: selectedTitle.id,
+                                slug: selectedTitle.slug,
+                                name: `${selectedTitle.name} S${selectedSeason}E${ep.number}`,
+                                type: 'tv',
+                                poster: selectedTitle.poster,
+                                year: selectedTitle.year,
+                                episode_id: ep.id,
+                                season: selectedSeason,
+                                episode: ep.number,
+                                duration: ep.duration ? ep.duration * 60 : 0,
+                              }
+                            )}
                           >
                             <Text style={styles.epPlayText}>{t.play}</Text>
                           </TouchableOpacity>
@@ -1245,24 +1527,32 @@ function MainApp() {
       </Modal>
 
       {/* Fullscreen Video Player Modal */}
-      <Modal visible={playerVisible} animationType="fade" transparent={false}>
+      <Modal
+        visible={playerVisible}
+        animationType="fade"
+        transparent={false}
+        onRequestClose={closePlayer}
+      >
         <SafeAreaView style={styles.playerContainer}>
           <StatusBar barStyle="light-content" backgroundColor="#000000" />
           <View style={styles.playerHeader}>
             <Text style={styles.playerHeaderTitle} numberOfLines={1}>{playerTitle}</Text>
-            <TouchableOpacity style={styles.playerCloseBtn} onPress={() => setPlayerUrl('') || setPlayerVisible(false)}>
+            <TouchableOpacity style={styles.playerCloseBtn} onPress={closePlayer}>
               <Text style={styles.playerCloseText}>{t.close}</Text>
             </TouchableOpacity>
           </View>
-          <WebView
-            source={{ html: getPlayerHtml() }}
-            style={styles.webview}
-            allowsFullscreenVideo={true}
-            mediaPlaybackRequiresUserAction={false}
-            javaScriptEnabled={true}
-            domStorageEnabled={true}
-            originWhitelist={['*']}
-          />
+          {playerUrl ? (
+            <WebView
+              source={{ html: getPlayerHtml() }}
+              style={styles.webview}
+              allowsFullscreenVideo={true}
+              mediaPlaybackRequiresUserAction={false}
+              javaScriptEnabled={true}
+              domStorageEnabled={true}
+              originWhitelist={['*']}
+              onMessage={onPlayerMessage}
+            />
+          ) : null}
         </SafeAreaView>
       </Modal>
 
@@ -1332,6 +1622,8 @@ const styles = StyleSheet.create({
 
   // History Card
   historyCard: { marginRight: 12 },
+  historyDeleteBtn: { position: 'absolute', top: 6, right: 6, width: 22, height: 22, borderRadius: 11, backgroundColor: 'rgba(11, 15, 25, 0.85)', justifyContent: 'center', alignItems: 'center', zIndex: 10 },
+  historyDeleteText: { color: '#cbd5e1', fontSize: 11, fontWeight: '800', lineHeight: 12 },
   historyBarWrap: { position: 'absolute', bottom: 0, left: 0, right: 0, height: 4, backgroundColor: 'rgba(0,0,0,0.6)' },
   historyBarFill: { height: '100%', backgroundColor: '#00d2ff' },
 
@@ -1343,14 +1635,22 @@ const styles = StyleSheet.create({
 
   // Search Screen
   searchBarWrap: { flexDirection: 'row', padding: 16, gap: 10 },
-  searchInput: { flex: 1, backgroundColor: '#131b2e', borderWidth: 1, borderColor: '#1e293b', borderRadius: 8, paddingHorizontal: 14, paddingVertical: 10, color: '#f8fafc', fontSize: 14 },
+  searchInputContainer: { flex: 1, position: 'relative', justifyContent: 'center' },
+  searchInput: { backgroundColor: '#131b2e', borderWidth: 1, borderColor: '#1e293b', borderRadius: 8, paddingLeft: 14, paddingRight: 36, paddingVertical: 10, color: '#f8fafc', fontSize: 14 },
+  searchClearBtn: { position: 'absolute', right: 10, width: 22, height: 22, borderRadius: 11, backgroundColor: '#1e293b', justifyContent: 'center', alignItems: 'center' },
+  searchClearText: { color: '#94a3b8', fontSize: 11, fontWeight: '700' },
   searchSubmitBtn: { backgroundColor: '#00d2ff', borderRadius: 8, paddingHorizontal: 18, justifyContent: 'center', alignItems: 'center' },
   searchSubmitText: { color: '#0b0f19', fontWeight: '700', fontSize: 13 },
-  typeFilterRow: { flexDirection: 'row', paddingHorizontal: 16, gap: 8, marginBottom: 12 },
+  typeFilterRow: { flexDirection: 'row', paddingHorizontal: 16, gap: 8, marginBottom: 8 },
   filterChip: { backgroundColor: '#131b2e', paddingHorizontal: 14, paddingVertical: 6, borderRadius: 16, borderWidth: 1, borderColor: '#1e293b' },
   filterChipActive: { backgroundColor: '#1e293b', borderColor: '#00d2ff' },
   filterChipText: { color: '#64748b', fontSize: 12, fontWeight: '600' },
   filterChipTextActive: { color: '#00d2ff' },
+  searchGenreRow: { paddingHorizontal: 16, paddingBottom: 10, gap: 8 },
+  searchGenreChip: { backgroundColor: '#131b2e', paddingHorizontal: 12, paddingVertical: 5, borderRadius: 14, borderWidth: 1, borderColor: '#1e293b' },
+  searchGenreChipActive: { backgroundColor: 'rgba(0, 210, 255, 0.1)', borderColor: '#00d2ff' },
+  searchGenreText: { color: '#64748b', fontSize: 11, fontWeight: '600' },
+  searchGenreTextActive: { color: '#00d2ff' },
   gridContent: { paddingHorizontal: 16, paddingBottom: 24, gap: 16 },
 
   // Downloads Screen
@@ -1359,6 +1659,9 @@ const styles = StyleSheet.create({
   subTabBtnActive: { borderBottomWidth: 2, borderBottomColor: '#00d2ff' },
   subTabText: { color: '#64748b', fontSize: 13, fontWeight: '600' },
   subTabTextActive: { color: '#00d2ff' },
+  subActionRow: { paddingHorizontal: 16, paddingTop: 10, alignItems: 'flex-end' },
+  subActionBtn: { backgroundColor: '#131b2e', borderWidth: 1, borderColor: '#1e293b', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 6 },
+  subActionBtnText: { color: '#94a3b8', fontSize: 12, fontWeight: '600' },
   listContent: { padding: 16, gap: 12 },
   jobItemCard: { backgroundColor: '#131b2e', borderRadius: 8, padding: 14, borderWidth: 1, borderColor: '#1e293b' },
   jobRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
@@ -1374,6 +1677,8 @@ const styles = StyleSheet.create({
   fileSize: { color: '#64748b', fontSize: 11 },
   playFileBtn: { backgroundColor: '#00d2ff', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 6 },
   playFileBtnText: { color: '#0b0f19', fontSize: 12, fontWeight: '700' },
+  deleteFileBtn: { backgroundColor: 'rgba(239, 68, 68, 0.1)', borderWidth: 1, borderColor: '#ef4444', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 6 },
+  deleteFileBtnText: { color: '#ef4444', fontSize: 12, fontWeight: '700' },
 
   // Watchlist Header
   headerPad: { padding: 16 },

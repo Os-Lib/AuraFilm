@@ -496,6 +496,9 @@ async function loadFiles() {
               <button class="btn btn-secondary btn-sm" onclick="openVideoPlayer('/api/files/download/${encodeURIComponent(f.path)}', 'local')">
                 Riproduci
               </button>
+              <button class="btn btn-secondary btn-sm" style="color:#ef4444; border-color:#ef4444;" onclick="deleteLocalFile('${encodeURIComponent(f.path)}')">
+                Elimina
+              </button>
             </div>
           </div>
         `).join("")}
@@ -503,6 +506,18 @@ async function loadFiles() {
     `;
   } catch (err) {
     container.innerHTML = `<div class="empty-state">Error: ${err.message}</div>`;
+  }
+}
+
+async function deleteLocalFile(encPath) {
+  if (!confirm("Eliminare definitivamente questo file?")) return;
+  try {
+    const res = await fetch(`/api/files/${encPath}`, { method: "DELETE" });
+    if (res.ok) {
+      loadFiles();
+    }
+  } catch (err) {
+    alert("Errore: " + err.message);
   }
 }
 
@@ -958,6 +973,7 @@ async function loadContinueWatching() {
         <div class="media-card" style="min-width: 140px; cursor:pointer;" onclick="openTitleModal(${it.id}, '${it.slug}')">
           <div class="media-poster-wrap">
             ${posterUrl ? `<img class="media-poster" src="${posterUrl}" loading="lazy">` : '<div class="no-poster">N/D</div>'}
+            <button style="position:absolute; top:4px; right:4px; background:rgba(0,0,0,0.75); color:#fff; border:none; border-radius:50%; width:20px; height:20px; line-height:18px; font-size:12px; cursor:pointer;" onclick="removeHistoryItem(${it.id}, ${it.episode_id ? `'${it.episode_id}'` : 'null'}, event)" title="Rimuovi">&times;</button>
             <div class="progress-track" style="position:absolute; bottom:0; left:0; width:100%; height:4px; border-radius:0;">
               <div class="progress-fill" style="width:${percent}%;"></div>
             </div>
@@ -969,6 +985,20 @@ async function loadContinueWatching() {
         </div>
       `;
     }).join("");
+  } catch (_) {}
+}
+
+async function removeHistoryItem(id, epId, e) {
+  if (e) e.stopPropagation();
+  try {
+    const res = await fetch("/api/history/delete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, episode_id: epId })
+    });
+    if (res.ok) {
+      loadContinueWatching();
+    }
   } catch (_) {}
 }
 
