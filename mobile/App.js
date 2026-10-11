@@ -18,6 +18,59 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { WebView } from 'react-native-webview';
 
+// Error Boundary to prevent any unhandled crash from killing the native app
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error, errorInfo) {
+    console.error('ErrorBoundary caught error:', error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <SafeAreaView style={styles.container}>
+          <StatusBar barStyle="light-content" backgroundColor="#0b0f19" />
+          <View style={styles.setupCard}>
+            <Text style={styles.setupBrand}>AuraFilm</Text>
+            <View style={styles.errorBox}>
+              <Text style={styles.errorBanner}>An unexpected error occurred in the UI.</Text>
+              <Text style={styles.errorDetail}>
+                {this.state.error ? this.state.error.toString() : ''}
+              </Text>
+            </View>
+            <TouchableOpacity
+              style={styles.primaryBtn}
+              onPress={() => this.setState({ hasError: false, error: null })}
+            >
+              <Text style={styles.primaryBtnText}>Retry</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.dangerBtn}
+              onPress={async () => {
+                try {
+                  await AsyncStorage.clear();
+                } catch (e) {}
+                this.setState({ hasError: false, error: null });
+              }}
+            >
+              <Text style={styles.dangerBtnText}>Reset App Data & Reconnect</Text>
+            </TouchableOpacity>
+          </View>
+        </SafeAreaView>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 const TRANSLATIONS = {
   en: {
     appTitle: 'AuraFilm',
@@ -186,7 +239,7 @@ const GENRES = {
   ]
 };
 
-export default function App() {
+function MainApp() {
   const { width } = useWindowDimensions();
   const isTablet = width >= 768;
 
@@ -333,11 +386,12 @@ export default function App() {
     await AsyncStorage.removeItem('@aurafilm_url');
     setServerUrl('');
     setShelves([]);
+    setHistory([]);
     setConnStatus('disconnected');
     setCurrentTab('settings');
   };
 
-  // Home Data
+  // Home Data - robust extraction of .shelves and .history
   const loadHomeData = async (url = serverUrl) => {
     if (!url) return;
     setIsRefreshing(true);
@@ -349,11 +403,17 @@ export default function App() {
 
       if (shelvesRes.ok) {
         const shelvesData = await shelvesRes.json();
-        setShelves(shelvesData || []);
+        const list = Array.isArray(shelvesData)
+          ? shelvesData
+          : (shelvesData && Array.isArray(shelvesData.shelves) ? shelvesData.shelves : []);
+        setShelves(list);
       }
-      if (historyRes.ok) {
+      if (historyRes && historyRes.ok) {
         const historyData = await historyRes.json();
-        setHistory(historyData || []);
+        const list = Array.isArray(historyData)
+          ? historyData
+          : (historyData && Array.isArray(historyData.history) ? historyData.history : []);
+        setHistory(list);
       }
     } catch (e) {
       console.error(e);
@@ -362,7 +422,7 @@ export default function App() {
     }
   };
 
-  // Search
+  // Search - robust extraction of .results
   const handleSearch = async (query = searchQuery, type = searchType) => {
     if (!query.trim() || !serverUrl) return;
     setIsSearching(true);
@@ -372,7 +432,10 @@ export default function App() {
       const res = await fetch(endpoint);
       if (res.ok) {
         const data = await res.json();
-        setSearchResults(data || []);
+        const list = Array.isArray(data)
+          ? data
+          : (data && Array.isArray(data.results) ? data.results : []);
+        setSearchResults(list);
       }
     } catch (e) {
       console.error(e);
@@ -381,7 +444,7 @@ export default function App() {
     }
   };
 
-  // Downloads & Files
+  // Downloads & Files - robust extraction of .jobs and .files
   const loadDownloads = async () => {
     if (!serverUrl) return;
     try {
@@ -391,11 +454,17 @@ export default function App() {
       ]);
       if (jobsRes.ok) {
         const j = await jobsRes.json();
-        setActiveJobs(j || []);
+        const list = Array.isArray(j)
+          ? j
+          : (j && Array.isArray(j.jobs) ? j.jobs : []);
+        setActiveJobs(list);
       }
       if (filesRes.ok) {
         const f = await filesRes.json();
-        setLibraryFiles(f || []);
+        const list = Array.isArray(f)
+          ? f
+          : (f && Array.isArray(f.files) ? f.files : []);
+        setLibraryFiles(list);
       }
     } catch (e) {
       console.error(e);
@@ -411,14 +480,17 @@ export default function App() {
     }
   };
 
-  // Watchlist
+  // Watchlist - robust extraction of .watchlist
   const loadWatchlist = async () => {
     if (!serverUrl) return;
     try {
       const res = await fetch(`${serverUrl}/api/watchlist`);
       if (res.ok) {
         const data = await res.json();
-        setWatchlist(data || []);
+        const list = Array.isArray(data)
+          ? data
+          : (data && Array.isArray(data.watchlist) ? data.watchlist : []);
+        setWatchlist(list);
       }
     } catch (e) {
       console.error(e);
@@ -446,7 +518,7 @@ export default function App() {
     }
   };
 
-  // Details Modal
+  // Details Modal - robust extraction of .title and .episodes
   const openTitleDetails = async (id, slug) => {
     if (!serverUrl) return;
     setDetailLoading(true);
@@ -458,9 +530,10 @@ export default function App() {
       const res = await fetch(`${serverUrl}/api/title/${id}/${slug}`);
       if (res.ok) {
         const data = await res.json();
-        setSelectedTitle(data);
-        if (data.type === 'tv' && data.seasons && data.seasons.length > 0) {
-          const firstSeason = data.seasons[0].number || 1;
+        const titleObj = data && data.title ? data.title : data;
+        setSelectedTitle(titleObj);
+        if (titleObj && titleObj.type === 'tv' && Array.isArray(titleObj.seasons) && titleObj.seasons.length > 0) {
+          const firstSeason = titleObj.seasons[0].number || 1;
           setSelectedSeason(firstSeason);
           loadEpisodes(id, slug, firstSeason);
         }
@@ -477,7 +550,10 @@ export default function App() {
       const res = await fetch(`${serverUrl}/api/title/${id}/${slug}/season/${seasonNum}`);
       if (res.ok) {
         const data = await res.json();
-        setSeasonEpisodes(data.episodes || []);
+        const list = Array.isArray(data)
+          ? data
+          : (data && Array.isArray(data.episodes) ? data.episodes : []);
+        setSeasonEpisodes(list);
       }
     } catch (e) {
       console.error(e);
@@ -552,6 +628,7 @@ export default function App() {
   const cardHeight = Math.round(cardWidth * 1.5);
 
   const renderMediaCard = (item) => {
+    if (!item) return null;
     const posterUri = item.poster ? `${serverUrl}/api/image/${item.poster}` : null;
     return (
       <TouchableOpacity
@@ -693,7 +770,7 @@ export default function App() {
   }
 
   // Main App Shell
-  const isInWatchlist = selectedTitle && watchlist.some(w => w.id === selectedTitle.id);
+  const isInWatchlist = selectedTitle && Array.isArray(watchlist) && watchlist.some(w => w.id === selectedTitle.id);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -721,7 +798,7 @@ export default function App() {
             showsVerticalScrollIndicator={false}
           >
             {/* Continue Watching */}
-            {history.length > 0 && (
+            {Array.isArray(history) && history.length > 0 && (
               <View style={styles.sectionWrap}>
                 <Text style={styles.sectionHeader}>{t.continueWatching}</Text>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.rowPadding}>
@@ -751,11 +828,11 @@ export default function App() {
             )}
 
             {/* Standard Shelves */}
-            {shelves.map(shelf => (
+            {(Array.isArray(shelves) ? shelves : []).map(shelf => (
               <View key={shelf.key || shelf.label} style={styles.sectionWrap}>
                 <Text style={styles.sectionHeader}>{shelf.label || shelf.key}</Text>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.rowPadding}>
-                  {shelf.items.map(item => renderMediaCard(item))}
+                  {(Array.isArray(shelf.items) ? shelf.items : []).map(item => renderMediaCard(item))}
                 </ScrollView>
               </View>
             ))}
@@ -831,8 +908,8 @@ export default function App() {
               </View>
             ) : (
               <FlatList
-                data={searchResults}
-                keyExtractor={(item) => item.id.toString()}
+                data={Array.isArray(searchResults) ? searchResults : []}
+                keyExtractor={(item) => (item.id ? item.id.toString() : Math.random().toString())}
                 numColumns={isTablet ? 5 : 3}
                 contentContainerStyle={styles.gridContent}
                 renderItem={({ item }) => renderMediaCard(item)}
@@ -870,8 +947,8 @@ export default function App() {
 
             {downloadsTab === 'jobs' ? (
               <FlatList
-                data={activeJobs}
-                keyExtractor={(item) => item.id}
+                data={Array.isArray(activeJobs) ? activeJobs : []}
+                keyExtractor={(item) => item.id || Math.random().toString()}
                 contentContainerStyle={styles.listContent}
                 renderItem={({ item }) => (
                   <View style={styles.jobItemCard}>
@@ -900,8 +977,8 @@ export default function App() {
               />
             ) : (
               <FlatList
-                data={libraryFiles}
-                keyExtractor={(item) => item.path}
+                data={Array.isArray(libraryFiles) ? libraryFiles : []}
+                keyExtractor={(item) => item.path || Math.random().toString()}
                 contentContainerStyle={styles.listContent}
                 renderItem={({ item }) => (
                   <View style={styles.fileItemCard}>
@@ -934,8 +1011,8 @@ export default function App() {
               <Text style={styles.sectionHeader}>{t.watchlistHeader}</Text>
             </View>
             <FlatList
-              data={watchlist}
-              keyExtractor={(item) => item.id.toString()}
+              data={Array.isArray(watchlist) ? watchlist : []}
+              keyExtractor={(item) => (item.id ? item.id.toString() : Math.random().toString())}
               numColumns={isTablet ? 5 : 3}
               contentContainerStyle={styles.gridContent}
               renderItem={({ item }) => renderMediaCard(item)}
@@ -1123,7 +1200,7 @@ export default function App() {
                   <View style={styles.actionsPanel}>
                     <Text style={styles.panelTitle}>{t.seasons}</Text>
                     <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginVertical: 10 }}>
-                      {(selectedTitle.seasons || []).map(s => (
+                      {(Array.isArray(selectedTitle.seasons) ? selectedTitle.seasons : []).map(s => (
                         <TouchableOpacity
                           key={s.number}
                           style={[styles.seasonChip, selectedSeason === s.number && styles.seasonChipActive]}
@@ -1140,7 +1217,7 @@ export default function App() {
                     </ScrollView>
 
                     <Text style={[styles.panelTitle, { marginTop: 16 }]}>{t.episodes}</Text>
-                    {seasonEpisodes.map(ep => (
+                    {(Array.isArray(seasonEpisodes) ? seasonEpisodes : []).map(ep => (
                       <View key={ep.id} style={styles.episodeCard}>
                         <View style={{ flex: 1, marginRight: 8 }}>
                           <Text style={styles.episodeTitle}>E{ep.number} - {ep.name || `${t.episodePrefix}${ep.number}`}</Text>
@@ -1190,6 +1267,14 @@ export default function App() {
       </Modal>
 
     </SafeAreaView>
+  );
+}
+
+export default function App() {
+  return (
+    <ErrorBoundary>
+      <MainApp />
+    </ErrorBoundary>
   );
 }
 
