@@ -247,10 +247,19 @@ body.dark-theme {
   width: 160px;
 }
 
-.cards-grid {
+.cards-grid,
+.media-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
   gap: 20px;
+}
+
+@media (max-width: 768px) {
+  .cards-grid,
+  .media-grid {
+    grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+    gap: 12px;
+  }
 }
 
 .media-card {

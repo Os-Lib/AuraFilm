@@ -36,6 +36,11 @@ async def lifespan(app: FastAPI):
     logger.info("Starting AuraFilm service...")
     job_manager.start()
 
+    from ..scheduler import scheduler
+    from ..bot import start_bot
+    scheduler.start()
+    start_bot()
+
     stop_domain_watch = threading.Event()
     domain_thread = threading.Thread(
         target=domain.watch_loop, args=(stop_domain_watch,), name="DomainWatcher", daemon=True
@@ -47,6 +52,7 @@ async def lifespan(app: FastAPI):
     # Shutdown
     logger.info("Shutting down AuraFilm service...")
     stop_domain_watch.set()
+    scheduler.stop()
     job_manager.stop()
 
 

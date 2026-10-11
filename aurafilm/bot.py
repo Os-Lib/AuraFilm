@@ -29,17 +29,17 @@ def handle_message(msg: dict, token: str):
 
     allowed_ids = config.get().get("telegram_allowed_ids", [])
     if allowed_ids and chat_id not in allowed_ids:
-        send_message(token, chat_id, "⛔ Non sei autorizzato ad usare questo bot.")
+        send_message(token, chat_id, "Non sei autorizzato ad usare questo bot.")
         return
 
     # Basic Commands
     if text.startswith("/start"):
-        send_message(token, chat_id, "🎬 Benvenuto in AuraFilm Bot!\nScrivi /cerca <nome film> per trovare un film, oppure usa l'interfaccia web.")
+        send_message(token, chat_id, "Benvenuto in AuraFilm Bot.\nScrivi /cerca <nome film> per trovare un film, oppure usa l'interfaccia web.")
     
     elif text.startswith("/cerca"):
         query = text.replace("/cerca", "").strip()
         if not query:
-            send_message(token, chat_id, "Devi specificare un titolo! Es: /cerca Il Gladiatore")
+            send_message(token, chat_id, "Devi specificare un titolo. Es: /cerca Il Gladiatore")
             return
             
         cur = domain.current()
@@ -53,7 +53,7 @@ def handle_message(msg: dict, token: str):
                 send_message(token, chat_id, f"Nessun risultato trovato per '{query}'.")
                 return
                 
-            resp_txt = "🍿 *Risultati Ricerca:*\n\n"
+            resp_txt = "*Risultati Ricerca:*\n\n"
             for idx, r in enumerate(results[:5]):
                 resp_txt += f"*{idx+1}. {r['name']}*\n"
                 resp_txt += f"Scrivi: `/scarica {r['id']} {r['slug']}`\n\n"
@@ -78,7 +78,7 @@ def handle_message(msg: dict, token: str):
                 slug=slug,
                 title_name=slug.replace("-", " ").title()
             )
-            send_message(token, chat_id, "✅ Download avviato con successo!")
+            send_message(token, chat_id, "Download avviato con successo.")
         except Exception as e:
             send_message(token, chat_id, f"Errore: {e}")
             
@@ -89,7 +89,7 @@ def handle_message(msg: dict, token: str):
         
         # Example direct listing:
         url = f"http://{host}:{port}/"
-        send_message(token, chat_id, f"📥 I film completati sono scaricabili dalla web dashboard: {url}")
+        send_message(token, chat_id, f"I film completati sono scaricabili dalla web dashboard: {url}")
 
 def _poll_telegram(token: str):
     logger.info("Telegram Bot polling started.")

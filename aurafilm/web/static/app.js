@@ -178,7 +178,7 @@ function renderMediaCard(item) {
     <div class="media-card" onclick="openTitleModal(${item.id}, '${item.slug}')">
       <div class="media-poster-wrap">
         ${posterUrl ? `<img class="media-poster" src="${posterUrl}" loading="lazy" alt="${item.name}">` : '<div class="no-poster">N/D</div>'}
-        ${item.score ? `<span class="media-badge">★ ${item.score}</span>` : ""}
+        ${item.score ? `<span class="media-badge">${item.score}</span>` : ""}
       </div>
       <div class="media-info">
         <div class="media-name" title="${item.name}">${item.name}</div>
@@ -280,7 +280,7 @@ async function openTitleModal(titleId, slug) {
           <div class="detail-meta-row">
             ${t.year ? `<span>${t.year}</span>` : ""}
             ${t.quality ? `<span class="badge">${t.quality}</span>` : ""}
-            ${t.score ? `<span>★ ${t.score}</span>` : ""}
+            ${t.score ? `<span>${t.score}</span>` : ""}
             ${t.runtime ? `<span>${t.runtime} min</span>` : ""}
           </div>
           <p class="detail-plot">${t.plot || "No synopsis available."}</p>
@@ -288,6 +288,15 @@ async function openTitleModal(titleId, slug) {
         </div>
       </div>
     `;
+
+    fetch("/api/watchlist").then(r => r.json()).then(wData => {
+      const isFav = (wData.watchlist || []).some(w => w.id === t.id);
+      const btn = document.getElementById("btnModalWatchlist");
+      if (btn && isFav) {
+        btn.textContent = "Nei Preferiti";
+        btn.className = "btn btn-primary btn-sm";
+      }
+    }).catch(() => {});
 
     if (t.type !== "movie" && t.seasons && t.seasons.length > 0) {
       loadSeasonEpisodes(t.id, t.slug, t.seasons[0].number, escapeQuotes(t.name), t.year || "");
@@ -819,7 +828,18 @@ function setGenreTypeFilter(type, el) {
   }
 }
 
+function closeGenreResults() {
+  selectedGenre = null;
+  initGenres();
+  const container = document.getElementById("genreResultsContainer");
+  if (container) container.style.display = "none";
+}
+
 async function selectGenre(genre) {
+  if (selectedGenre === genre) {
+    closeGenreResults();
+    return;
+  }
   selectedGenre = genre;
   initGenres();
   

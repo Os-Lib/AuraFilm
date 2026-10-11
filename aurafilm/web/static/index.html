@@ -14,10 +14,12 @@
     <!-- Top Header -->
     <header class="top-nav">
       <div class="nav-brand" onclick="navigate('home')">
-        <div class="brand-logo">⚓</div>
+        <div class="brand-logo" style="display:flex; align-items:center;">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#00d2ff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"></rect><line x1="7" y1="2" x2="7" y2="22"></line><line x1="17" y1="2" x2="17" y2="22"></line><line x1="2" y1="12" x2="22" y2="12"></line><line x1="2" y1="7" x2="7" y2="7"></line><line x1="2" y1="17" x2="7" y2="17"></line><line x1="17" y1="17" x2="22" y2="17"></line><line x1="17" y1="7" x2="22" y2="7"></line></svg>
+        </div>
         <div class="brand-text">
           <span class="brand-title">AuraFilm</span>
-          <span class="brand-ver">v0.1</span>
+          <span class="brand-ver">v1.1.1</span>
         </div>
       </div>
 
@@ -102,7 +104,7 @@
           <div class="home-genres-section" style="border-top: 1px solid var(--border-color); padding-top: 30px; margin-top: 40px;">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
               <h3 style="font-size:18px; font-weight:600;">Esplora per genere</h3>
-              <div style="display:flex; gap:6px;">
+              <div class="genre-type-filters" style="display:flex; gap:6px;">
                 <button class="btn btn-sm btn-secondary active" id="genreFilterAll" onclick="setGenreTypeFilter(null, this)">Tutti</button>
                 <button class="btn btn-sm btn-secondary" id="genreFilterMovie" onclick="setGenreTypeFilter('movie', this)">Film</button>
                 <button class="btn btn-sm btn-secondary" id="genreFilterTv" onclick="setGenreTypeFilter('tv', this)">Serie TV</button>
@@ -110,8 +112,11 @@
             </div>
             <div id="genreChipsList" style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:24px;"></div>
             <div id="genreResultsContainer" style="display:none; margin-top: 20px;">
-              <h4 id="genreResultsTitle" style="font-size:16px; margin-bottom:16px; color:var(--text-muted);"></h4>
-              <div id="genreResultsGrid" class="media-grid"></div>
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+                <h4 id="genreResultsTitle" style="font-size:16px; margin:0; color:var(--text-muted);"></h4>
+                <button class="btn btn-sm btn-secondary" onclick="closeGenreResults()">Chiudi</button>
+              </div>
+              <div id="genreResultsGrid" class="cards-grid"></div>
             </div>
           </div>
         </section>
@@ -285,7 +290,7 @@
     <!-- Title Detail Modal -->
     <div id="titleModal" class="modal-overlay" style="display:none;" onclick="if(event.target===this) closeModal()">
       <div class="modal-box">
-        <button class="modal-close" onclick="closeModal()">×</button>
+        <button class="modal-close" onclick="closeModal()">&times;</button>
         <div id="modalContent"></div>
       </div>
     </div>
@@ -294,7 +299,9 @@
     <div id="wizardModal" class="modal-overlay" style="display:none;">
       <div class="modal-box wizard-box">
         <div class="wizard-header">
-          <div class="wizard-icon">⚓</div>
+          <div class="wizard-icon" style="display:flex; justify-content:center; align-items:center;">
+            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#00d2ff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"></rect><line x1="7" y1="2" x2="7" y2="22"></line><line x1="17" y1="2" x2="17" y2="22"></line><line x1="2" y1="12" x2="22" y2="12"></line><line x1="2" y1="7" x2="7" y2="7"></line><line x1="2" y1="17" x2="7" y2="17"></line><line x1="17" y1="17" x2="22" y2="17"></line><line x1="17" y1="7" x2="22" y2="7"></line></svg>
+          </div>
           <h2 data-i18n="wizard_title">Welcome to AuraFilm</h2>
           <p class="text-muted" data-i18n="wizard_subtitle">Select your language and let AuraFilm find the best active streaming source.</p>
         </div>
