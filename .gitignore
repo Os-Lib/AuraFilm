@@ -6,3 +6,6 @@ data/
 downloads/
 *.tmp
 .DS_Store
+mobile/node_modules/
+mobile/.expo/
+mobile/dist/
