@@ -1,0 +1,14 @@
+node_modules/
+mobile/node_modules/
+.venv/
+build/
+dist/
+data/
+downloads/
+aurafilm/
+*.exe
+*.apk
+*.zip
+*.spec
+*.db*
+*.bat
