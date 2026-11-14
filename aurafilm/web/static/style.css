@@ -634,7 +634,133 @@ body.dark-theme {
 .mt-4 { margin-top: 24px; }
 .text-muted { color: var(--text-muted); font-size: 13px; }
 
-.genre-type-filters .btn.active {
+.genre-type-filters .btn.active,
+.search-type-filters .btn.active {
   background-color: var(--accent);
   color: #0b0f19;
+  border-color: var(--accent);
+}
+
+.home-hero {
+  position: relative;
+  border-radius: 14px;
+  overflow: hidden;
+  border: 1px solid var(--border-color);
+  background-color: var(--bg-surface);
+  min-height: 260px;
+  margin-bottom: 30px;
+  display: flex;
+  align-items: flex-end;
+}
+
+.hero-backdrop {
+  position: absolute;
+  inset: 0;
+  background-size: cover;
+  background-position: center 25%;
+  opacity: 0.45;
+  transition: opacity 0.3s ease;
+}
+
+.home-hero::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, rgba(10, 13, 20, 0.96) 0%, rgba(10, 13, 20, 0.78) 55%, rgba(10, 13, 20, 0.35) 100%);
+}
+
+.hero-content {
+  position: relative;
+  z-index: 2;
+  padding: 28px 32px;
+  max-width: 640px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.hero-title {
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.hero-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.hero-plot {
+  font-size: 14px;
+  line-height: 1.5;
+  color: #ccd7e8;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.loader-box,
+.empty-state {
+  padding: 32px 20px;
+  text-align: center;
+  color: var(--text-muted);
+  background-color: var(--bg-card);
+  border: 1px dashed var(--border-color);
+  border-radius: var(--radius);
+  font-size: 14px;
+}
+
+.no-poster {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.audio-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+}
+
+.audio-options label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.form-check {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.form-check input[type="checkbox"] {
+  width: auto;
+}
+
+.form-group label {
+  display: block;
+  font-size: 13px;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+
+.report-box {
+  background-color: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  font-size: 13px;
+  color: var(--text-muted);
 }

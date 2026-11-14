@@ -1,4 +1,4 @@
-# AuraFilm ⚓
+# AuraFilm
 
 A modern, lightweight self-hosted web panel to search and download movies and TV series into your media library.
 
@@ -10,12 +10,12 @@ A modern, lightweight self-hosted web panel to search and download movies and TV
 
 ## Highlights
 
-- 🧠 **Intelligent Domain Auto-Discovery**: Automatically discovers and validates active StreamingCommunity domains through multi-witness verification (canonical declarations, redirects, Telegram announcements, and link feeds) so the service keeps working seamlessly even when the domain rotates.
-- 🌍 **Multilingual First-Run Setup**: Welcome wizard with built-in support for **English**, **Italiano**, **Español**, **Français**, **Deutsch**, and **Português**.
-- ⚡ **High-Performance HLS Downloader**: Parallel chunk downloads with AES-128 CBC decryption, exponential backoff on CDN congestion, and automatic sequential retry for missing segments.
-- 🎬 **Lossless Audio & Subtitle Remuxing**: Native stream copying into `.mkv` or `.mp4` via FFmpeg without re-encoding, preserving full video quality, multiple audio tracks, and embedded or external subtitles.
-- 🖥️ **Modern Web Interface**: Responsive dark-mode dashboard with home shelves (trending, latest additions, top 10), live search, title details, season browser, real-time download progress (via Server-Sent Events), and integrated library file browser.
-- 📦 **Zero-Config Setup**: Bundles FFmpeg fallback automatically on Windows and requires no external database.
+- **Intelligent Domain Auto-Discovery**: Automatically discovers and validates active StreamingCommunity domains through multi-witness verification (canonical declarations, redirects, Telegram announcements, and link feeds) so the service keeps working seamlessly even when the domain rotates.
+- **Multilingual First-Run Setup**: Welcome wizard with built-in support for **English**, **Italiano**, **Español**, **Français**, **Deutsch**, and **Português**.
+- **High-Performance HLS Downloader**: Parallel chunk downloads with AES-128 CBC decryption, exponential backoff on CDN congestion, and automatic sequential retry for missing segments.
+- **Lossless Audio & Subtitle Remuxing**: Native stream copying into `.mkv` or `.mp4` via FFmpeg without re-encoding, preserving full video quality, multiple audio tracks, and embedded or external subtitles.
+- **Modern Web Interface**: Responsive dark-mode dashboard with home shelves (trending, latest additions, top 10), live search, title details, season browser, real-time download progress (via Server-Sent Events), and integrated library file browser.
+- **Zero-Config Setup**: Bundles FFmpeg fallback automatically on Windows and requires no external database.
 
 ---
 

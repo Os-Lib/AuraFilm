@@ -251,8 +251,9 @@ const GENRES = {
 };
 
 function MainApp() {
-  const { width } = useWindowDimensions();
-  const isTablet = width >= 768;
+  const { width, height } = useWindowDimensions();
+  const isTablet = Math.min(width, height) >= 600;
+  const numCols = isTablet ? 5 : 3;
 
   // Language state (default 'en')
   const [lang, setLang] = useState('en');
@@ -535,7 +536,12 @@ function MainApp() {
           style: 'destructive',
           onPress: async () => {
             try {
-              const res = await fetch(`${serverUrl}/api/files/${encodeURIComponent(filePath)}`, {
+              const encodedPath = (filePath || '')
+                .replace(/\\/g, '/')
+                .split('/')
+                .map(encodeURIComponent)
+                .join('/');
+              const res = await fetch(`${serverUrl}/api/files/${encodedPath}`, {
                 method: 'DELETE',
               });
               if (res.ok) {
@@ -644,12 +650,12 @@ function MainApp() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          id: selectedTitle.id,
+          title_id: selectedTitle.id,
           slug: selectedTitle.slug,
-          name: selectedTitle.name,
+          title_name: selectedTitle.name,
           year: selectedTitle.year,
-          poster: selectedTitle.poster,
-          audio,
+          audio_languages: audio.length > 0 ? audio : ['ita'],
+          subtitle_languages: [],
         })
       });
       if (res.ok) {
@@ -669,14 +675,16 @@ function MainApp() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          id: selectedTitle.id,
+          tv_id: selectedTitle.id,
           slug: selectedTitle.slug,
-          name: selectedTitle.name,
+          tv_name: selectedTitle.name,
+          year: selectedTitle.year,
           season: selectedSeason,
-          episode: ep.number,
           episode_id: ep.id,
-          poster: selectedTitle.poster,
-          audio: ['ita'],
+          episode_number: ep.number,
+          episode_name: ep.name || '',
+          audio_languages: ['ita'],
+          subtitle_languages: [],
         })
       });
       if (res.ok) {
@@ -1107,10 +1115,10 @@ function MainApp() {
               </View>
             ) : (
               <FlatList
-                key={`search_grid_${isTablet ? 5 : 3}`}
+                key={`search_grid_${numCols}`}
                 data={Array.isArray(searchResults) ? searchResults : []}
                 keyExtractor={(item) => (item.id ? item.id.toString() : Math.random().toString())}
-                numColumns={isTablet ? 5 : 3}
+                numColumns={numCols}
                 contentContainerStyle={styles.gridContent}
                 renderItem={({ item }) => renderMediaCard(item)}
                 refreshControl={
@@ -1185,7 +1193,7 @@ function MainApp() {
                       </View>
                       <View style={styles.jobFooter}>
                         <Text style={styles.jobPhase}>{item.phase || item.status}</Text>
-                        {item.status === 'downloading' ? (
+                        {(item.status === 'running' || item.status === 'queued') ? (
                           <TouchableOpacity onPress={() => cancelJob(item.id)}>
                             <Text style={styles.cancelText}>{t.cancel}</Text>
                           </TouchableOpacity>
@@ -1213,28 +1221,35 @@ function MainApp() {
                     colors={['#00d2ff']}
                   />
                 }
-                renderItem={({ item }) => (
-                  <View style={styles.fileItemCard}>
-                    <View style={{ flex: 1, marginRight: 10 }}>
-                      <Text style={styles.fileName} numberOfLines={1}>{item.name}</Text>
-                      <Text style={styles.fileSize}>{item.size_mb} MB</Text>
+                renderItem={({ item }) => {
+                  const encodedRelPath = (item.path || '')
+                    .replace(/\\/g, '/')
+                    .split('/')
+                    .map(encodeURIComponent)
+                    .join('/');
+                  return (
+                    <View style={styles.fileItemCard}>
+                      <View style={{ flex: 1, marginRight: 10 }}>
+                        <Text style={styles.fileName} numberOfLines={1}>{item.name}</Text>
+                        <Text style={styles.fileSize}>{item.size_mb} MB</Text>
+                      </View>
+                      <View style={{ flexDirection: 'row', gap: 8 }}>
+                        <TouchableOpacity
+                          style={styles.playFileBtn}
+                          onPress={() => playStream(`${serverUrl}/api/files/download/${encodedRelPath}`, item.name, null)}
+                        >
+                          <Text style={styles.playFileBtnText}>{t.play}</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={styles.deleteFileBtn}
+                          onPress={() => deleteFile(item.path)}
+                        >
+                          <Text style={styles.deleteFileBtnText}>{t.delete}</Text>
+                        </TouchableOpacity>
+                      </View>
                     </View>
-                    <View style={{ flexDirection: 'row', gap: 8 }}>
-                      <TouchableOpacity
-                        style={styles.playFileBtn}
-                        onPress={() => playStream(`${serverUrl}/api/files/download/${encodeURIComponent(item.path)}`, item.name, null)}
-                      >
-                        <Text style={styles.playFileBtnText}>{t.play}</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={styles.deleteFileBtn}
-                        onPress={() => deleteFile(item.path)}
-                      >
-                        <Text style={styles.deleteFileBtnText}>{t.delete}</Text>
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                )}
+                  );
+                }}
                 ListEmptyComponent={
                   <View style={styles.centerBox}>
                     <Text style={styles.dimmedText}>{t.noLocalFiles}</Text>
@@ -1252,10 +1267,10 @@ function MainApp() {
               <Text style={styles.sectionHeader}>{t.watchlistHeader}</Text>
             </View>
             <FlatList
-              key={`watchlist_grid_${isTablet ? 5 : 3}`}
+              key={`watchlist_grid_${numCols}`}
               data={Array.isArray(watchlist) ? watchlist : []}
               keyExtractor={(item) => (item.id ? item.id.toString() : Math.random().toString())}
-              numColumns={isTablet ? 5 : 3}
+              numColumns={numCols}
               contentContainerStyle={styles.gridContent}
               renderItem={({ item }) => renderMediaCard(item)}
               refreshControl={

@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>AuraFilm</title>
-  <link rel="stylesheet" href="/static/style.css">
+  <link rel="stylesheet" href="/static/style.css?v=1.1.1">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -24,7 +24,7 @@
       </div>
 
       <div class="nav-search">
-        <input type="text" id="navSearchInput" placeholder="Search films, series..." onkeydown="if(event.key==='Enter') doSearch()">
+        <input type="text" id="navSearchInput" data-i18n-placeholder="search_placeholder" placeholder="Search films and TV series..." onkeydown="if(event.key==='Enter') doSearch()">
         <button class="btn btn-primary btn-sm" onclick="doSearch()">
           <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
         </button>
@@ -32,7 +32,7 @@
 
       <div class="nav-actions">
         <!-- Live Domain Pill -->
-        <div class="domain-pill" id="domainPill" onclick="navigate('settings')" title="Click to view domain status">
+        <div class="domain-pill" id="domainPill" onclick="navigate('settings'); triggerDomainCheck(false);" title="Click to view domain status">
           <span class="status-dot"></span>
           <span id="domainText">Checking...</span>
         </div>
@@ -58,6 +58,10 @@
             <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
             <span data-i18n="home">Home</span>
           </a>
+          <a class="nav-link" data-tab="search" onclick="navigate('search')">
+            <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+            <span data-i18n="nav_search">Search</span>
+          </a>
           <a class="nav-link" data-tab="downloads" onclick="navigate('downloads')">
             <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
             <span data-i18n="downloads">Downloads</span>
@@ -69,15 +73,15 @@
           </a>
           <a class="nav-link" data-tab="watchlist" onclick="navigate('watchlist')">
             <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path></svg>
-            <span>Preferiti</span>
+            <span data-i18n="nav_watchlist">Watchlist</span>
           </a>
           <a class="nav-link" data-tab="calendar" onclick="navigate('calendar')">
             <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
-            <span>Calendario</span>
+            <span data-i18n="nav_calendar">Calendar</span>
           </a>
           <a class="nav-link" data-tab="stats" onclick="navigate('stats')">
             <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>
-            <span>Statistiche</span>
+            <span data-i18n="nav_stats">Statistics</span>
           </a>
           <a class="nav-link" data-tab="settings" onclick="navigate('settings')">
             <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
@@ -90,9 +94,22 @@
       <main class="content-view">
         <!-- View: Home -->
         <section id="viewHome" class="view-section active">
+          <!-- Hero Featured Banner -->
+          <div id="homeHero" class="home-hero" style="display:none;">
+            <div id="heroBackdrop" class="hero-backdrop"></div>
+            <div class="hero-content">
+              <div id="heroMeta" class="hero-meta"></div>
+              <h1 id="heroTitle" class="hero-title"></h1>
+              <p id="heroPlot" class="hero-plot"></p>
+              <div style="margin-top:6px;">
+                <button id="heroWatchBtn" class="btn btn-primary" data-i18n="watch_now">Watch Now</button>
+              </div>
+            </div>
+          </div>
+
           <!-- Continua a guardare -->
           <div id="continueWatchingSection" style="display:none; margin-bottom: 30px;">
-            <h3 style="font-size:18px; font-weight:600; margin-bottom:12px;">Continua a guardare</h3>
+            <h3 style="font-size:18px; font-weight:600; margin-bottom:12px;" data-i18n="continue_watching">Continue Watching</h3>
             <div id="continueWatchingSlider" class="shelf-slider"></div>
           </div>
 
@@ -102,19 +119,19 @@
           
           <!-- Genres Explorer Section -->
           <div class="home-genres-section" style="border-top: 1px solid var(--border-color); padding-top: 30px; margin-top: 40px;">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
-              <h3 style="font-size:18px; font-weight:600;">Esplora per genere</h3>
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:16px;">
+              <h3 style="font-size:18px; font-weight:600;" data-i18n="explore_genres">Browse by Genre</h3>
               <div class="genre-type-filters" style="display:flex; gap:6px;">
-                <button class="btn btn-sm btn-secondary active" id="genreFilterAll" onclick="setGenreTypeFilter(null, this)">Tutti</button>
-                <button class="btn btn-sm btn-secondary" id="genreFilterMovie" onclick="setGenreTypeFilter('movie', this)">Film</button>
-                <button class="btn btn-sm btn-secondary" id="genreFilterTv" onclick="setGenreTypeFilter('tv', this)">Serie TV</button>
+                <button class="btn btn-sm btn-secondary active" id="genreFilterAll" onclick="setGenreTypeFilter(null, this)" data-i18n="filter_all">All</button>
+                <button class="btn btn-sm btn-secondary" id="genreFilterMovie" onclick="setGenreTypeFilter('movie', this)" data-i18n="filter_movies">Movies</button>
+                <button class="btn btn-sm btn-secondary" id="genreFilterTv" onclick="setGenreTypeFilter('tv', this)" data-i18n="filter_series">TV Shows</button>
               </div>
             </div>
             <div id="genreChipsList" style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:24px;"></div>
             <div id="genreResultsContainer" style="display:none; margin-top: 20px;">
               <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
                 <h4 id="genreResultsTitle" style="font-size:16px; margin:0; color:var(--text-muted);"></h4>
-                <button class="btn btn-sm btn-secondary" onclick="closeGenreResults()">Chiudi</button>
+                <button class="btn btn-sm btn-secondary" onclick="closeGenreResults()" data-i18n="close">Close</button>
               </div>
               <div id="genreResultsGrid" class="cards-grid"></div>
             </div>
@@ -123,10 +140,18 @@
 
         <!-- View: Search -->
         <section id="viewSearch" class="view-section">
-          <div class="section-header">
-            <h2 id="searchQueryTitle">Search Results</h2>
+          <div class="section-header" style="flex-wrap:wrap; gap:12px;">
+            <h2 id="searchQueryTitle" data-i18n="search_results">Search Results</h2>
+            <div class="search-type-filters" style="display:flex; flex-wrap:wrap; gap:6px;">
+              <button class="btn btn-sm btn-secondary active" id="searchFilterAll" onclick="setSearchFilter('all', this)" data-i18n="filter_all">All</button>
+              <button class="btn btn-sm btn-secondary" id="searchFilterMovie" onclick="setSearchFilter('movie', this)" data-i18n="filter_movies">Movies</button>
+              <button class="btn btn-sm btn-secondary" id="searchFilterTv" onclick="setSearchFilter('tv', this)" data-i18n="filter_series">TV Shows</button>
+              <button class="btn btn-sm btn-secondary" id="searchFilterActor" onclick="setSearchFilter('actor', this)" data-i18n="filter_actor">Actor (TMDB)</button>
+            </div>
           </div>
-          <div id="searchResultsGrid" class="cards-grid"></div>
+          <div id="searchResultsGrid" class="cards-grid">
+            <div class="empty-state" data-i18n="search_prompt">Enter a title or actor name in the search bar.</div>
+          </div>
         </section>
 
         <!-- View: Downloads -->
@@ -144,7 +169,7 @@
         <section id="viewFiles" class="view-section">
           <div class="section-header">
             <h2 data-i18n="files">Library Files</h2>
-            <button class="btn btn-secondary btn-sm" onclick="loadFiles()">Refresh</button>
+            <button class="btn btn-secondary btn-sm" onclick="loadFiles()" data-i18n="refresh_btn">Refresh</button>
           </div>
           <div id="filesList" class="files-container"></div>
         </section>
@@ -152,7 +177,7 @@
         <!-- View: Watchlist -->
         <section id="viewWatchlist" class="view-section">
           <div class="section-header">
-            <h2>Preferiti</h2>
+            <h2 data-i18n="watchlist_title">Your Watchlist</h2>
           </div>
           <div id="watchlistGrid" class="cards-grid"></div>
         </section>
@@ -160,7 +185,7 @@
         <!-- View: Calendar -->
         <section id="viewCalendar" class="view-section">
           <div class="section-header">
-            <h2>Calendario Uscite</h2>
+            <h2 data-i18n="calendar_title">Release Calendar</h2>
           </div>
           <div id="calendarGrid" class="cards-grid"></div>
         </section>
@@ -168,7 +193,7 @@
         <!-- View: Stats -->
         <section id="viewStats" class="view-section">
           <div class="section-header">
-            <h2>Statistiche Sistema & Archiviazione</h2>
+            <h2 data-i18n="stats_title">System &amp; Storage Statistics</h2>
           </div>
           <div id="statsContainer" class="mt-3"></div>
         </section>
@@ -176,15 +201,15 @@
         <!-- View: Settings -->
         <section id="viewSettings" class="view-section">
           <div class="settings-card">
-            <h3 data-i18n="domain_settings">Source & Domain Detection</h3>
+            <h3 data-i18n="domain_settings">Source &amp; Domain Detection</h3>
             <p class="text-muted" data-i18n="smart_domain_desc">AuraFilm monitors and heals source connections automatically.</p>
             
             <div class="form-group mt-3">
               <label data-i18n="current_domain">Current Source Domain</label>
               <div class="input-inline">
                 <input type="text" id="settingDomainInput" placeholder="streamingcommunity...">
-                <button class="btn btn-secondary" onclick="saveManualDomain()">Apply</button>
-                <button class="btn btn-primary" onclick="triggerDomainCheck(true)" data-i18n="auto_detect_now">Check & Heal Domain Now</button>
+                <button class="btn btn-secondary" onclick="saveManualDomain()" data-i18n="apply_btn">Apply</button>
+                <button class="btn btn-primary" onclick="triggerDomainCheck(true)" data-i18n="auto_detect_now">Check &amp; Heal Domain Now</button>
               </div>
             </div>
 
@@ -203,19 +228,19 @@
               <input type="text" id="settingDownloadDir">
             </div>
             <div class="form-group mt-3">
-              <label data-i18n="output_format">Container Format</label>
+              <label data-i18n="output_format">Container Format (MKV / MP4)</label>
               <select id="settingFormat">
-                <option value="mkv">MKV (Matroska - all audio tracks & subs lossless)</option>
+                <option value="mkv">MKV (Matroska - all audio tracks &amp; subs lossless)</option>
                 <option value="mp4">MP4 (Universal playback)</option>
               </select>
             </div>
             
             <div class="form-group mt-3">
-              <label>Qualità Video di Default (Scarica / Riproduci)</label>
+              <label data-i18n="default_quality_label">Default Video Quality (Download / Play)</label>
               <select id="settingDefaultQuality">
-                <option value="4k">4K (Massima Risoluzione)</option>
-                <option value="1080p">1080p (Consigliata)</option>
-                <option value="720p">720p (Risparmio dati/spazio)</option>
+                <option value="4k">4K (Max Resolution)</option>
+                <option value="1080p">1080p (Recommended)</option>
+                <option value="720p">720p (Data Saver)</option>
               </select>
             </div>
             <div class="form-group mt-3">
@@ -226,62 +251,67 @@
           </div>
 
           <div class="settings-card mt-4">
-            <h3>Advanced Integrations</h3>
+            <h3 data-i18n="advanced_integrations">Advanced Integrations</h3>
             
             <div class="form-group mt-3">
-              <label>Telegram Bot Token (@BotFather)</label>
+              <label data-i18n="telegram_token_label">Telegram Bot Token (@BotFather)</label>
               <input type="password" id="settingTelegramToken" placeholder="12345:ABCDEF...">
             </div>
 
             <div class="form-group mt-3 form-check">
               <input type="checkbox" id="settingNightCompression">
-              <label for="settingNightCompression">Enable Nightly H.265 Compression (Saves 50% space)</label>
+              <label for="settingNightCompression" data-i18n="night_compression_enable">Enable Nightly H.265 Compression (Saves 50% space)</label>
             </div>
 
             <div class="input-inline mt-3">
               <div class="form-group" style="flex: 1;">
-                <label>Start Hour (0-23)</label>
+                <label data-i18n="start_hour_label">Start Hour (0-23)</label>
                 <input type="number" id="settingCompStart" min="0" max="23" value="2">
               </div>
               <div class="form-group" style="flex: 1;">
-                <label>End Hour (0-23)</label>
+                <label data-i18n="end_hour_label">End Hour (0-23)</label>
                 <input type="number" id="settingCompEnd" min="0" max="23" value="6">
               </div>
             </div>
 
             <div class="form-group mt-3 form-check">
               <input type="checkbox" id="settingRcloneEnabled">
-              <label for="settingRcloneEnabled">Abilita Upload Rclone Cloud (es. Google Drive)</label>
+              <label for="settingRcloneEnabled" data-i18n="rclone_enable">Enable Rclone Cloud Upload (e.g. Google Drive)</label>
             </div>
             <div class="form-group mt-2">
-              <label>Nome Remote Rclone (es. gdrive:/AuraFilm)</label>
+              <label data-i18n="rclone_remote_label">Rclone Remote Path (e.g. gdrive:/AuraFilm)</label>
               <input type="text" id="settingRcloneRemote" placeholder="gdrive:/AuraFilm">
             </div>
             <div class="form-group mt-2 form-check">
               <input type="checkbox" id="settingRcloneDelete">
-              <label for="settingRcloneDelete">Elimina file locale dopo il caricamento su Cloud (salva spazio)</label>
+              <label for="settingRcloneDelete" data-i18n="rclone_delete_after">Delete local file after cloud upload (saves space)</label>
             </div>
 
             <div class="form-group mt-3">
-              <label>Webhook Discord per Notifiche</label>
+              <label data-i18n="discord_webhook_label">Discord Webhook URL for Notifications</label>
               <input type="text" id="settingDiscordWebhook" placeholder="https://discord.com/api/webhooks/...">
+            </div>
+
+            <div class="form-group mt-3">
+              <label data-i18n="tmdb_key_label">TMDB API Key (Optional)</label>
+              <input type="password" id="settingTmdbKey" placeholder="Optional TMDB v3 API key...">
             </div>
 
             <div class="input-inline mt-3">
               <div class="form-group" style="flex: 1;">
-                <label>Limite Velocita Download (MB/s, 0 = illimitato)</label>
+                <label data-i18n="speed_limit_label">Download Speed Limit (MB/s, 0 = unlimited)</label>
                 <input type="number" id="settingSpeedLimit" min="0" max="100" value="0">
               </div>
               <div class="form-group" style="flex: 1;">
-                <label>Traccia Audio Preferita</label>
+                <label data-i18n="preferred_audio_label">Preferred Audio Track</label>
                 <select id="settingPreferredAudio">
                   <option value="ita">Italiano</option>
-                  <option value="eng">Originale / Inglese</option>
+                  <option value="eng">Original / English</option>
                 </select>
               </div>
             </div>
 
-            <button class="btn btn-primary mt-4" onclick="saveGeneralSettings()">Save Advanced Settings</button>
+            <button class="btn btn-primary mt-4" onclick="saveGeneralSettings()" data-i18n="save_advanced_btn">Save Advanced Settings</button>
           </div>
         </section>
       </main>
@@ -334,9 +364,9 @@
   <div id="videoModal" class="modal-overlay" style="display:none; background: #000; z-index: 9999;" onclick="if(event.target===this) closeVideoModal()">
     <div style="position: absolute; top: 10px; right: 20px; z-index: 10000; display: flex; gap: 8px; align-items: center;">
       <select id="videoQualitySelect" class="btn btn-secondary btn-sm" onchange="changeVideoQuality(this.value)">
-        <option value="-1">Qualita: Auto</option>
+        <option value="-1" data-i18n="quality_auto">Quality: Auto</option>
       </select>
-      <button class="btn btn-secondary" onclick="closeVideoModal()">Chiudi</button>
+      <button class="btn btn-secondary" onclick="closeVideoModal()" data-i18n="close">Close</button>
     </div>
     <div style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;">
       <video id="videoPlayer" controls style="width: 90%; height: 90%; max-width: 1200px; background: #000; outline: none;"></video>
@@ -344,6 +374,6 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
-  <script src="/static/app.js"></script>
+  <script src="/static/app.js?v=1.1.1"></script>
 </body>
 </html>

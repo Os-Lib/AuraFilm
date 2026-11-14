@@ -78,6 +78,14 @@ def create_app() -> FastAPI:
     from ..stremio import router as stremio_router
     app.include_router(stremio_router)
 
+    # Prevent stale JS/CSS across updates
+    @app.middleware("http")
+    async def no_cache_static(request, call_next):
+        response = await call_next(request)
+        if request.url.path.startswith("/static/"):
+            response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        return response
+
     # Static Assets
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ipaddress
 import logging
 from urllib.parse import urlparse
 
@@ -13,7 +14,28 @@ from .. import net
 
 logger = logging.getLogger(__name__)
 
-ALLOWED_KEY_HOSTS = ("vixcloud.co",)
+ALLOWED_KEY_HOSTS = (
+    "vixcloud.co",
+    "vixcloud.cc",
+    "vixcloud.org",
+    "vixcloud.net",
+    "vixcloud.to",
+    "vixcloud.sbs",
+)
+
+
+def _is_allowed_key_host(host: str) -> bool:
+    if not host:
+        return False
+    try:
+        ipaddress.ip_address(host)
+        return False
+    except ValueError:
+        pass
+    if any(host == allowed or host.endswith("." + allowed) for allowed in ALLOWED_KEY_HOSTS):
+        return True
+    parts = host.split(".")
+    return len(parts) >= 2 and parts[-2].startswith("vixcloud")
 
 
 class DecryptionError(RuntimeError):
@@ -24,7 +46,7 @@ def fetch_key(session: requests.Session, key_url: str, referer: str | None = Non
     """Fetch the 16-byte AES key from an allowed key host."""
     parsed = urlparse(key_url)
     host = (parsed.hostname or "").lower()
-    if not any(host == allowed or host.endswith("." + allowed) for allowed in ALLOWED_KEY_HOSTS):
+    if not _is_allowed_key_host(host):
         raise DecryptionError(f"Key host '{host}' is not in allowed hosts")
 
     headers = {"Referer": referer} if referer else {}

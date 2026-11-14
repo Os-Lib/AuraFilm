@@ -128,7 +128,74 @@ def normalize_title(raw: dict) -> dict | None:
 
 # ── Public API ────────────────────────────────────────────────────────────────
 
+GENRE_MAP: dict[str, dict[str, list[int]]] = {
+    "azione": {"movie": [4], "tv": [13], "all": [4, 13]},
+    "action": {"movie": [4], "tv": [13], "all": [4, 13]},
+    "action & adventure": {"movie": [4, 11], "tv": [13], "all": [4, 11, 13]},
+    "avventura": {"movie": [11], "tv": [13], "all": [11, 13]},
+    "adventure": {"movie": [11], "tv": [13], "all": [11, 13]},
+    "animazione": {"movie": [19], "tv": [19], "all": [19]},
+    "animation": {"movie": [19], "tv": [19], "all": [19]},
+    "commedia": {"movie": [12], "tv": [12], "all": [12]},
+    "comedy": {"movie": [12], "tv": [12], "all": [12]},
+    "crime": {"movie": [2], "tv": [2], "all": [2]},
+    "documentario": {"movie": [24], "tv": [24], "all": [24]},
+    "documentary": {"movie": [24], "tv": [24], "all": [24]},
+    "dramma": {"movie": [1], "tv": [1], "all": [1]},
+    "drammatico": {"movie": [1], "tv": [1], "all": [1]},
+    "drama": {"movie": [1], "tv": [1], "all": [1]},
+    "famiglia": {"movie": [16], "tv": [16], "all": [16]},
+    "family": {"movie": [16], "tv": [16], "all": [16]},
+    "fantasy": {"movie": [8], "tv": [3], "all": [8, 3]},
+    "fantascienza": {"movie": [10], "tv": [3], "all": [10, 3]},
+    "sci-fi": {"movie": [10], "tv": [3], "all": [10, 3]},
+    "scifi": {"movie": [10], "tv": [3], "all": [10, 3]},
+    "sci-fi & fantasy": {"movie": [8, 10], "tv": [3], "all": [8, 10, 3]},
+    "guerra": {"movie": [9], "tv": [17], "all": [9, 17]},
+    "war": {"movie": [9], "tv": [17], "all": [9, 17]},
+    "war & politics": {"movie": [9], "tv": [17], "all": [9, 17]},
+    "horror": {"movie": [7], "tv": [7, 6], "all": [7]},
+    "mistero": {"movie": [6], "tv": [6], "all": [6]},
+    "mystery": {"movie": [6], "tv": [6], "all": [6]},
+    "musica": {"movie": [14], "tv": [14], "all": [14]},
+    "music": {"movie": [14], "tv": [14], "all": [14]},
+    "romantico": {"movie": [15], "tv": [15], "all": [15]},
+    "romance": {"movie": [15], "tv": [15], "all": [15]},
+    "storia": {"movie": [22], "tv": [22], "all": [22]},
+    "history": {"movie": [22], "tv": [22], "all": [22]},
+    "thriller": {"movie": [5], "tv": [6], "all": [5, 6]},
+    "western": {"movie": [20], "tv": [20], "all": [20]},
+    "reality": {"movie": [18], "tv": [18], "all": [18]},
+    "kids": {"movie": [25], "tv": [25], "all": [25]},
+    "korean drama": {"movie": [26], "tv": [26], "all": [26]},
+}
+
+
+def browse_genre(host: str, genre: str, *, page: int = 1, media_type: str | None = None) -> list[dict]:
+    """Browse titles belonging to a genre via StreamingCommunity's archive endpoint."""
+    key = (genre or "").strip().lower()
+    mapping = GENRE_MAP.get(key)
+    if not mapping:
+        return search(host, genre, page=page, media_type=media_type)
+
+    bucket = media_type if media_type in ("movie", "tv") else "all"
+    genre_ids = mapping.get(bucket) or mapping["all"]
+    params: dict = {"genre[]": genre_ids}
+    if media_type in ("movie", "tv"):
+        params["type"] = media_type
+    if page > 1:
+        params["page"] = page
+
+    props = fetch_page(host, f"/{LOCALE}/archive", params=params).get("props") or {}
+    titles = props.get("titles") or []
+    if media_type in ("movie", "tv"):
+        titles = [t for t in titles if t.get("type") == media_type]
+    return [t for t in (normalize_title(x) for x in titles[:RESULT_CAP]) if t]
+
+
 def search(host: str, query: str, *, page: int = 1, media_type: str | None = None) -> list[dict]:
+    if (query or "").strip().lower() in GENRE_MAP:
+        return browse_genre(host, query, page=page, media_type=media_type)
     params = {"q": query}
     if page > 1:
         params["page"] = page

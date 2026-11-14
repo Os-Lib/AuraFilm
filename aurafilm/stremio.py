@@ -47,30 +47,42 @@ def get_stream(media_type: str, item_id: str):
             episode_idx = int(parts[2])
 
     api_key = config.get().get("tmdb_api_key")
-    # If no TMDB API key is set, we use a public fallback key for external ID resolution
-    fallback_key = "45dbdd5962d49d81337b597286377317"
-    active_key = api_key or fallback_key
 
     try:
-        find_url = f"https://api.themoviedb.org/3/find/{imdb_id}?api_key={active_key}&external_source=imdb_id&language=it-IT"
-        res = requests.get(find_url, timeout=10).json()
-        
         target_name = None
-        if media_type == "movie":
-            results = res.get("movie_results", [])
-            if results:
-                target_name = results[0].get("title")
-        else:
-            results = res.get("tv_results", [])
-            if results:
-                target_name = results[0].get("name")
-                
+        if api_key:
+            try:
+                find_url = f"https://api.themoviedb.org/3/find/{imdb_id}?api_key={api_key}&external_source=imdb_id&language=it-IT"
+                t_resp = requests.get(find_url, timeout=10)
+                if t_resp.ok:
+                    res = t_resp.json()
+                    if media_type == "movie":
+                        results = res.get("movie_results", [])
+                        if results:
+                            target_name = results[0].get("title")
+                    else:
+                        results = res.get("tv_results", [])
+                        if results:
+                            target_name = results[0].get("name")
+            except Exception as exc:
+                logger.warning("Stremio: TMDB lookup failed (%s), falling back to Cinemeta", exc)
+
         if not target_name:
-            logger.warning("Stremio: TMDB could not resolve %s", imdb_id)
+            cinemeta_type = "series" if media_type == "series" else "movie"
+            c_res = requests.get(
+                f"https://v3-cinemeta.strem.io/meta/{cinemeta_type}/{imdb_id}.json",
+                timeout=10,
+            )
+            if c_res.ok:
+                target_name = c_res.json().get("meta", {}).get("name")
+
+        if not target_name:
+            logger.warning("Stremio: could not resolve %s", imdb_id)
             return {"streams": []}
 
         # Search title on StreamingCommunity
-        sc_results = site.search(cur_domain, target_name, media_type=media_type)
+        sc_media_type = "tv" if media_type == "series" else "movie"
+        sc_results = site.search(cur_domain, target_name, media_type=sc_media_type)
         if not sc_results:
             return {"streams": []}
 
@@ -82,13 +94,12 @@ def get_stream(media_type: str, item_id: str):
         if media_type == "series" and season_idx is not None and episode_idx is not None:
             # Resolve specific episode ID
             ts = site.TitleSession(cur_domain, title_id, slug)
-            season_data = ts.season(season_idx)
-            episodes = season_data.get("episodes") or []
+            episodes = ts.season(season_idx) or []
             matched_ep = next((e for e in episodes if e.get("number") == episode_idx), None)
             if matched_ep:
                 episode_id = matched_ep.get("id")
 
-        play_url = f"/api/stremio/play/{title_id}/{slug}" + (f"?episode_id={episode_id}" if episode_id else "")
+        play_url = f"/stremio/play/{title_id}/{slug}" + (f"?episode_id={episode_id}" if episode_id else "")
 
         return {
             "streams": [

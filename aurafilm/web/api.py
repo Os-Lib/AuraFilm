@@ -5,6 +5,8 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
+import time
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -14,12 +16,22 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from .. import config, events, i18n, net
+from ..hls import playlist
 from ..jobs import job_manager
-from ..source import domain, site
+from ..source import domain, site, stream
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+_image_session = net.new_session(pool_size=24)
+
+_PLACEHOLDER_SVG = (
+    '<svg xmlns="http://www.w3.org/2000/svg" width="300" height="450" viewBox="0 0 300 450">'
+    '<rect width="300" height="450" fill="#161d2d"/>'
+    '<text x="150" y="225" fill="#8c9cb8" font-family="sans-serif" font-size="18" '
+    'font-weight="600" text-anchor="middle" dominant-baseline="middle">AuraFilm</text>'
+    '</svg>'
+).encode("utf-8")
 
 
 class SetupPayload(BaseModel):
@@ -32,24 +44,31 @@ class DomainSetPayload(BaseModel):
 
 
 class MovieDownloadPayload(BaseModel):
-    title_id: int
+    title_id: int | None = None
+    id: int | None = None
     slug: str
-    title_name: str
+    title_name: str | None = None
+    name: str | None = None
     year: str | None = None
-    audio_languages: List[str] = ["ita"]
+    audio_languages: List[str] | None = None
+    audio: List[str] | None = None
     subtitle_languages: List[str] = []
 
 
 class EpisodeDownloadPayload(BaseModel):
-    tv_id: int
+    tv_id: int | None = None
+    id: int | None = None
     slug: str
-    tv_name: str
+    tv_name: str | None = None
+    name: str | None = None
     season: int
     episode_id: int
-    episode_number: int
+    episode_number: int | None = None
+    episode: int | None = None
     episode_name: str | None = None
     year: str | None = None
-    audio_languages: List[str] = ["ita"]
+    audio_languages: List[str] | None = None
+    audio: List[str] | None = None
     subtitle_languages: List[str] = []
 
 
@@ -73,6 +92,7 @@ async def get_system_status():
     return {
         "setup_done": cfg.get("setup_done", False),
         "language": cfg.get("language", "en"),
+        "preferred_audio": cfg.get("preferred_audio", "ita"),
         "domain": cur_domain,
         "domain_auto_apply": cfg.get("domain_auto_apply", True),
         "download_dir": cfg.get("download_dir"),
@@ -162,22 +182,155 @@ async def search_titles(q: str = Query(..., min_length=1), page: int = 1, type: 
         domain.on_source_failure()
         raise HTTPException(status_code=502, detail=str(exc))
 
+
+@router.get("/api/genre")
+async def browse_by_genre(genre: str = Query(..., min_length=1), page: int = 1, type: str | None = None):
+    cur = domain.current()
+    if not cur:
+        raise HTTPException(status_code=503, detail="No domain configured")
+    try:
+        titles = await asyncio.to_thread(site.browse_genre, cur, genre, page=page, media_type=type)
+        return {"results": titles, "page": page, "genre": genre, "type": type}
+    except Exception as exc:
+        domain.on_source_failure()
+        raise HTTPException(status_code=502, detail=str(exc))
+
+
 @router.get("/api/search/actor")
 async def search_actor_movies(q: str = Query(..., min_length=2)):
-    # Feature Idea #2: Actor/Director Deep Search via TMDB
-    api_key = config.get().get("tmdb_api_key")
-    if not api_key:
-        raise HTTPException(status_code=400, detail="TMDB API Key missing in settings")
+    api_key = (config.get().get("tmdb_api_key") or "").strip()
     try:
-        # Search person
-        resp = requests.get(f"https://api.themoviedb.org/3/search/person", params={"api_key": api_key, "query": q, "language": "it-IT"}).json()
-        if not resp.get("results"):
-            return {"results": []}
-        person_id = resp["results"][0]["id"]
-        # Get credits
-        credits = requests.get(f"https://api.themoviedb.org/3/person/{person_id}/movie_credits", params={"api_key": api_key, "language": "it-IT"}).json()
-        cast_movies = credits.get("cast", [])
-        return {"person": resp["results"][0]["name"], "results": sorted(cast_movies, key=lambda x: x.get("popularity", 0), reverse=True)[:20]}
+        def _fetch_actor_tmdb():
+            if not api_key:
+                return None
+            r = requests.get(
+                "https://api.themoviedb.org/3/search/person",
+                params={"api_key": api_key, "query": q, "language": "it-IT"},
+                timeout=10,
+            )
+            if not r.ok:
+                return None
+            resp = r.json()
+            if not resp.get("results"):
+                return {"results": []}
+            person = resp["results"][0]
+            c = requests.get(
+                f"https://api.themoviedb.org/3/person/{person['id']}/combined_credits",
+                params={"api_key": api_key, "language": "it-IT"},
+                timeout=10,
+            )
+            if not c.ok:
+                return None
+            credits = c.json()
+            items = credits.get("cast", [])
+            items.sort(key=lambda x: x.get("popularity", 0), reverse=True)
+            normalized = []
+            seen_titles = set()
+            for item in items:
+                mtype = "tv" if item.get("media_type") == "tv" else "movie"
+                name = item.get("title") or item.get("name")
+                if not name or name.lower() in seen_titles:
+                    continue
+                seen_titles.add(name.lower())
+                date = item.get("release_date") or item.get("first_air_date") or ""
+                normalized.append({
+                    "id": item.get("id"),
+                    "tmdb_only": True,
+                    "name": name,
+                    "type": mtype,
+                    "year": date[:4] if len(date) >= 4 else None,
+                    "score": round(float(item["vote_average"]), 1) if item.get("vote_average") else None,
+                    "poster_url": f"https://image.tmdb.org/t/p/w342{item['poster_path']}" if item.get("poster_path") else None,
+                })
+                if len(normalized) >= 24:
+                    break
+            return {"person": person["name"], "results": normalized}
+
+        def _fetch_actor_wikidata():
+            headers = {"User-Agent": "AuraFilm/1.1.1"}
+            w_resp = requests.get(
+                "https://www.wikidata.org/w/api.php",
+                params={"action": "wbsearchentities", "search": q, "language": "en", "format": "json"},
+                headers=headers,
+                timeout=10,
+            )
+            if not w_resp.ok:
+                return {"results": []}
+            entities = w_resp.json().get("search", [])
+            if not entities:
+                return {"results": []}
+            person = entities[0]
+            qid = person.get("id", "")
+            if not re.fullmatch(r"Q\d+", qid):
+                return {"results": []}
+
+            sparql = (
+                "SELECT ?filmLabel (MIN(YEAR(?date)) AS ?year) (SAMPLE(?imdb) AS ?imdb_id) (MAX(?sitelinks) AS ?pop) "
+                f"WHERE {{ ?film wdt:P161 wd:{qid} ; wikibase:sitelinks ?sitelinks ; rdfs:label ?filmLabel . "
+                "FILTER(LANG(?filmLabel) = 'en') "
+                "OPTIONAL { ?film wdt:P577 ?date } "
+                "OPTIONAL { ?film wdt:P345 ?imdb } } "
+                "GROUP BY ?filmLabel ORDER BY DESC(?pop) LIMIT 24"
+            )
+            sp_resp = requests.get(
+                "https://query.wikidata.org/sparql",
+                params={"query": sparql, "format": "json"},
+                headers=headers,
+                timeout=12,
+            )
+            if not sp_resp.ok:
+                return {"results": []}
+            bindings = sp_resp.json().get("results", {}).get("bindings", [])
+            normalized = []
+            seen_titles = set()
+            for idx, b in enumerate(bindings):
+                name = b.get("filmLabel", {}).get("value")
+                if not name or name.lower() in seen_titles:
+                    continue
+                seen_titles.add(name.lower())
+                year_val = b.get("year", {}).get("value")
+                imdb_id = b.get("imdb_id", {}).get("value")
+                normalized.append({
+                    "id": idx + 1,
+                    "tmdb_only": True,
+                    "name": name,
+                    "type": "movie",
+                    "year": year_val[:4] if year_val and len(year_val) >= 4 else None,
+                    "score": None,
+                    "poster_url": f"https://images.metahub.space/poster/medium/{imdb_id}/img" if imdb_id else None,
+                })
+            return {"person": person.get("label", q), "results": normalized}
+
+        def _fetch_actor():
+            tmdb_res = _fetch_actor_tmdb()
+            if tmdb_res is not None:
+                return tmdb_res
+            return _fetch_actor_wikidata()
+
+        return await asyncio.to_thread(_fetch_actor)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+
+
+@router.get("/api/title/{title_id}/probe")
+async def probe_title_stream(title_id: int, episode_id: int | None = None):
+    cur = domain.current()
+    if not cur:
+        raise HTTPException(status_code=503, detail="No domain configured")
+    try:
+        def _probe():
+            st = stream.resolve(cur, title_id, episode_id=episode_id)
+            sess = net.new_session(pool_size=4)
+            master = playlist.parse_master(sess, st.master_url, referer=st.referer)
+            langs = master.languages()
+            qualities = sorted({v.height for v in master.variants if v.height}, reverse=True)
+            return {
+                "audio": langs.get("audio", []),
+                "subtitles": langs.get("subtitles", []),
+                "qualities": qualities,
+            }
+
+        return await asyncio.to_thread(_probe)
     except Exception as exc:
         raise HTTPException(status_code=502, detail=str(exc))
 
@@ -212,27 +365,29 @@ async def get_season_episodes(title_id: int, slug: str, number: int):
 @router.get("/api/image/{filename:path}")
 async def proxy_image(filename: str):
     cur = domain.current()
-    if not cur:
-        raise HTTPException(status_code=404, detail="No domain configured")
-    session = net.new_session(pool_size=4)
-    urls = [
-        f"https://cdn.{cur}/images/{filename}",
-        f"https://{cur}/images/{filename}",
-    ]
-    for url in urls:
-        try:
-            resp = await asyncio.to_thread(
-                session.get, url, headers={"Referer": f"https://{cur}/"}, timeout=10
-            )
-            if resp.ok and resp.headers.get("Content-Type", "").startswith("image/"):
-                return Response(
-                    content=resp.content,
-                    media_type=resp.headers.get("Content-Type"),
-                    headers={"Cache-Control": "public, max-age=86400"},
+    if cur and filename:
+        urls = [
+            f"https://cdn.{cur}/images/{filename}",
+            f"https://{cur}/images/{filename}",
+        ]
+        for url in urls:
+            try:
+                resp = await asyncio.to_thread(
+                    _image_session.get, url, headers={"Referer": f"https://{cur}/"}, timeout=10
                 )
-        except Exception:
-            pass
-    raise HTTPException(status_code=404, detail="Image not found")
+                if resp.ok and resp.headers.get("Content-Type", "").startswith("image/"):
+                    return Response(
+                        content=resp.content,
+                        media_type=resp.headers.get("Content-Type"),
+                        headers={"Cache-Control": "public, max-age=86400"},
+                    )
+            except Exception:
+                pass
+    return Response(
+        content=_PLACEHOLDER_SVG,
+        media_type="image/svg+xml",
+        headers={"Cache-Control": "public, max-age=3600"},
+    )
 
 
 # ── Downloads & Jobs ──────────────────────────────────────────────────────────
@@ -244,13 +399,20 @@ async def list_jobs():
 
 @router.post("/api/jobs/movie")
 async def download_movie(payload: MovieDownloadPayload):
+    tid = payload.title_id if payload.title_id is not None else payload.id
+    tname = payload.title_name or payload.name
+    if tid is None or not tname:
+        raise HTTPException(status_code=422, detail="title_id and title_name are required")
+    audios = payload.audio_languages if payload.audio_languages is not None else payload.audio
+    if not audios:
+        audios = ["ita"]
     job = job_manager.enqueue(
         item_type="movie",
-        title_id=payload.title_id,
+        title_id=tid,
         slug=payload.slug,
-        title_name=payload.title_name,
+        title_name=tname,
         year=payload.year,
-        audio_languages=payload.audio_languages,
+        audio_languages=audios,
         subtitle_languages=payload.subtitle_languages,
     )
     return {"status": "ok", "job": job.as_dict()}
@@ -258,17 +420,25 @@ async def download_movie(payload: MovieDownloadPayload):
 
 @router.post("/api/jobs/episode")
 async def download_episode(payload: EpisodeDownloadPayload):
+    tv_id = payload.tv_id if payload.tv_id is not None else payload.id
+    tv_name = payload.tv_name or payload.name
+    ep_num = payload.episode_number if payload.episode_number is not None else payload.episode
+    if tv_id is None or not tv_name or ep_num is None:
+        raise HTTPException(status_code=422, detail="tv_id, tv_name and episode_number are required")
+    audios = payload.audio_languages if payload.audio_languages is not None else payload.audio
+    if not audios:
+        audios = ["ita"]
     job = job_manager.enqueue(
         item_type="episode",
-        title_id=payload.tv_id,
+        title_id=tv_id,
         slug=payload.slug,
-        title_name=payload.tv_name,
+        title_name=tv_name,
         year=payload.year,
         season=payload.season,
         episode_id=payload.episode_id,
-        episode_number=payload.episode_number,
+        episode_number=ep_num,
         episode_name=payload.episode_name,
-        audio_languages=payload.audio_languages,
+        audio_languages=audios,
         subtitle_languages=payload.subtitle_languages,
     )
     return {"status": "ok", "job": job.as_dict()}
@@ -333,7 +503,7 @@ async def list_files():
             total_bytes += sz
             rel = p.relative_to(dl_dir)
             results.append({
-                "path": str(rel),
+                "path": str(rel).replace("\\", "/"),
                 "name": p.name,
                 "size_mb": round(sz / (1024 * 1024), 1),
                 "modified": p.stat().st_mtime,
@@ -341,11 +511,10 @@ async def list_files():
             })
     return {"files": results, "total_size_mb": round(total_bytes / (1024 * 1024), 1)}
 
-@router.get("/api/files/download/{filename:path}")
+@router.api_route("/api/files/download/{filename:path}", methods=["GET", "HEAD"])
 async def download_file(filename: str):
-    import os
     from fastapi.responses import FileResponse
-    dl_dir = Path(config.value("download_dir"))
+    dl_dir = Path(config.value("download_dir")).resolve()
     file_path = (dl_dir / filename).resolve()
     
     # Security check: ensure path is within dl_dir
@@ -437,7 +606,7 @@ def stream_proxy_master(id: int, slug: str, episode_id: int | None = None):
 
 # ── Watchlist / Preferiti ──────────────────────────────────────────────────────
 
-WATCHLIST_FILE = Path("data/watchlist.json")
+WATCHLIST_FILE = config.DATA_DIR / "watchlist.json"
 
 def _load_watchlist() -> list:
     if not WATCHLIST_FILE.exists():
@@ -475,7 +644,7 @@ def toggle_watchlist(payload: dict):
 
 # ── Cronologia & Continua a Guardare ──────────────────────────────────────────
 
-HISTORY_FILE = Path("data/history.json")
+HISTORY_FILE = config.DATA_DIR / "history.json"
 
 def _load_history() -> list:
     if not HISTORY_FILE.exists():
@@ -499,8 +668,8 @@ def get_history():
 def update_history(payload: dict):
     # payload: { "id": int, "slug": str, "name": str, "poster": str, "type": str, "episode_id": int | None, "current_time": float, "duration": float }
     items = _load_history()
-    key = f"{payload.get('id')}_{payload.get('episode_id', '')}"
-    items = [it for it in items if f"{it.get('id')}_{it.get('episode_id', '')}" != key]
+    key = f"{payload.get('id')}_{payload.get('episode_id') or ''}"
+    items = [it for it in items if f"{it.get('id')}_{it.get('episode_id') or ''}" != key]
     payload["timestamp"] = time.time()
     items.insert(0, payload)
     _save_history(items[:50]) # Conserva gli ultimi 50
@@ -510,8 +679,8 @@ def update_history(payload: dict):
 def delete_history_item(payload: dict):
     # payload: { "id": int, "episode_id": int | None }
     items = _load_history()
-    key = f"{payload.get('id')}_{payload.get('episode_id', '')}"
-    items = [it for it in items if f"{it.get('id')}_{it.get('episode_id', '')}" != key]
+    key = f"{payload.get('id')}_{payload.get('episode_id') or ''}"
+    items = [it for it in items if f"{it.get('id')}_{it.get('episode_id') or ''}" != key]
     _save_history(items)
     return {"status": "ok", "history": items}
 
@@ -568,13 +737,18 @@ def get_calendar():
         for s in sliders:
             if "recente" in (s.get("label") or "").lower():
                 for t in s.get("titles", []):
+                    norm = site.normalize_title(t) or {}
                     if t.get("type") == "tv":
                         recent_series.append({
                             "id": t["id"],
                             "slug": t["slug"],
                             "name": t["name"],
-                            "year": t.get("last_air_date_it") or t.get("last_air_date") or "",
-                            "poster": site.normalize_title(t).get("poster")
+                            "type": t.get("type", "tv"),
+                            "score": t.get("score"),
+                            "seasons_count": t.get("seasons_count") or 0,
+                            "year": t.get("last_air_date_it") or t.get("last_air_date") or norm.get("year") or "",
+                            "poster": norm.get("poster"),
+                            "cover": norm.get("cover"),
                         })
         return {"releases": recent_series[:20]}
     except Exception as e:
